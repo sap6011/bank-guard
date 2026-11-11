@@ -1,224 +1,256 @@
-# BankGuard — Product Requirements Document
+# BankGuard: Product Requirements Document
 
-> **Status:** Draft v1. Filled in with default assumptions for a portfolio project. Items marked 🟡 are best-guesses Saptarshi should confirm or override.
+**Status:** Draft v2, 12 Nov 2026. Supersedes draft v1.
+**Matches:** Architecture v3 (zero idle cost).
+**Naming:** "Phase 1" is the first complete build described here. "Phase 2" is the upgrade planned about six months later (section 13). Diagram versions (v1, v2, v3) are a separate numbering.
 
----
+Items marked **[confirm]** are assumptions Sap should confirm or override.
 
-## 1. One-paragraph brief
+## 1. Brief
 
-BankGuard is a portfolio project that demonstrates production-grade GenAI engineering — specifically multi-agent orchestration with LangGraph, AWS-native MLOps, and full-stack delivery — through a plausible bank fraud detection system. It is reviewed primarily by senior engineering hiring managers and ML platform leads at fintech and GenAI-focused companies. Success means a reviewer can, in under five minutes, see that Saptarshi can design, build, and ship an enterprise-shaped GenAI system end-to-end. The project lives as a public GitHub repo with a recorded 3-minute demo video and a one-click `terraform apply` to deploy live; it stays *deployed* only during active job-hunt periods, with an idle cost ceiling of **under $10/month** when torn down to documentation-only mode.
-
----
+BankGuard is a portfolio project that shows applied machine learning and AI engineering through a bank fraud detection system. It combines a rigorously evaluated fraud classifier with a LangGraph multi-agent investigation workflow that has human review built in. It targets data scientist, ML engineer, and AI engineer roles. Success means a reviewer can see, in under five minutes, evidence of sound modelling judgment, measurable agent quality, and the ability to ship the result. The project lives in a public GitHub repo with a recorded three minute demo. It runs locally at zero cost, with AWS services used on demand and paid from account credits.
 
 ## 2. Audience and reviewer journey
 
-**Primary reviewer:** Senior engineering hiring manager or staff/principal ML platform engineer screening candidates for GenAI, ML platform, or AI engineering roles at mid-to-large fintech or AI-product companies.
+**Primary reviewers:** hiring managers and interviewers for data scientist, ML engineer, and AI engineer roles, including intern and graduate tracks.
 
-What they care about:
-- Production thinking — does this person understand observability, CI/CD, security, cost?
-- Architectural judgment — did they pick the right tools, or just the most fashionable ones?
-- Breadth credibly demonstrated — not just name-dropped on a CV
-- A working demo, not slideware
+| Role | What they read first | Where BankGuard answers it |
+|---|---|---|
+| Data scientist | Problem framing, baselines, evaluation rigor, error analysis | Section 5 |
+| ML engineer | Training pipeline, experiment tracking, reproducibility, serving, tests | Sections 5, 8 |
+| AI engineer | Agent design, tool use, LLM evaluation, guardrails | Sections 4, 6 |
 
-What turns them off:
-- Tutorial-grade code that reads like a copy of someone's blog post
-- Buzzword soup with no defensible reason for each choice
-- A broken or unclear demo
-- An architecture diagram that doesn't match the code
-
-**Secondary reviewer:** AWS solutions architects or technical interviewers who'll deep-dive on specific services during a loop.
+**What turns them off:**
+- A model with one headline metric and no baseline
+- Agents that are plain functions with an LLM label
+- Infrastructure with no interesting code behind it
+- A demo that does not match the repo
 
 **Reviewer journey:**
-1. They land on the GitHub README. They see a one-paragraph pitch, the architecture diagram inline, a "watch the 3-minute demo" link at the top, and a clear skills-demonstrated table.
-2. They click the demo video. They see transactions streaming in, agents working, an analyst approving a flagged case, and a Grafana-style dashboard with model drift metrics.
-3. If interested, they read `docs/ARCHITECTURE.md` (decisions and tradeoffs), `docs/PRD.md` (this document — itself a signal of product thinking), and skim the LangGraph supervisor code.
-4. The thing that makes them want to talk to Saptarshi: the project demonstrates *judgment* — explicit non-goals, defensible tradeoffs, and a cost-aware deployment story. It looks like something built by an engineer, not a bootcamp grad.
-
----
+1. README: one paragraph pitch, architecture diagram, demo link, and a results table (model comparison and agent evaluation scores).
+2. Demo video: a flagged transaction moves through investigation to analyst approval.
+3. Deeper read: `docs/MODELLING.md`, `docs/AGENT_EVAL.md`, `docs/ARCHITECTURE.md`, and this PRD.
+4. The hook: every claim in the README is backed by a number and a notebook or test that reproduces it.
 
 ## 3. Functional scope
 
-The system does, end-to-end:
-1. **Ingest** a stream of synthetic transaction events (event-driven, not REST submissions)
-2. **Normalise and enrich** each transaction (ingestion agent)
-3. **Score** fraud risk using a fine-tuned HuggingFace classifier served on SageMaker Serverless Inference (anomaly scoring agent)
-4. **Flag** regulatory concerns — sanctions screening, AML rules, SAR triggers (regulatory flagging agent)
-5. **Summarise** flagged cases into draft analyst reports using a Bedrock LLM with Guardrails (case summary agent)
-6. **Pause** for human review — the LangGraph graph checkpoints; the case appears in the React dashboard
-7. **Resume** when the analyst approves or rejects; decision persists to the case store
-8. **Monitor** for model drift on a schedule; alerts surface in the observability dashboard
+End to end, the system does the following:
 
-**Successful demo run (60-second happy path):**
-A transaction stream is replayed at 5x speed. Within seconds, three cases are flagged. The analyst dashboard lights up with one high-priority case — a $47K wire to a sanctioned jurisdiction. The analyst clicks in, reads the AI-drafted summary, approves the SAR filing. The graph resumes, the decision is logged, the case moves to "closed" status. A side panel shows the classifier's feature attribution and the current drift score.
+1. **Ingest** synthetic transaction events from a replay script through a queue.
+2. **Normalise and enrich** each event (deterministic code).
+3. **Score** fraud risk with the best model from the modelling track (deterministic model call).
+4. **Route** on the score: low risk ends the run, high risk goes to investigation.
+5. **Investigate** with an LLM agent that chooses its own tools: sanctions lookup, account history query, and similar past cases from vector memory.
+6. **Loop** when evidence is insufficient: the supervisor sends the case back for more evidence, up to a fixed limit.
+7. **Summarise** the case into a draft analyst report with guardrails applied.
+8. **Pause** for human review. The graph checkpoints and the case appears in the dashboard.
+9. **Resume** when the analyst approves or rejects. The decision is stored.
+10. **Monitor** score drift on a schedule.
 
----
+**Happy path for the demo:** a replayed stream produces three flagged cases. One is a large transfer to a sanctioned counterparty. The investigation agent calls two tools, the summary agent drafts the report, the analyst approves, and the case closes.
 
-## 4. Non-goals
+## 4. Multi-agent design
 
-Explicit list of what BankGuard is **not**:
+The multi-agent system is the core of the project. It takes about 30% of the effort.
 
-- **Not a real fraud detection system** — model accuracy is illustrative, no benchmark claims against industry baselines
-- **Not multi-tenant** — single bank, single analyst persona, single role
-- **Not regulatorily compliant** — SAR logic is plausible but not audited; no real bank should ship this
-- **Not handling real PII** — all transaction data is synthetic (PaySim-derived)
-- **Not high-throughput** — demo-scale only, single-shard streaming, sub-100 transactions per minute
-- **Not production-hardened** — no DR, no multi-region, no SLA, no on-call rotation
-- **Not building** a mobile app
-- **Not building** a customer-facing UI — analyst dashboard only
-- **Not building** a feature store *in v1* — features computed inline; feature store deferred to v2 roadmap (§11)
-- **Not building** real-time model retraining *in v1* — scheduled batch retraining only; streaming retraining deferred to v2 roadmap (§11)
-- **Not implementing** OAuth flows beyond Cognito's defaults
-- **Not optimising** Bedrock token usage beyond reasonable prompt hygiene
+| Node | Uses an LLM | Type | Responsibility |
+|---|---|---|---|
+| Tx ingestion | No | Deterministic node | Parse, validate, enrich |
+| Anomaly scoring | No | Deterministic node | Call the classifier, apply the threshold |
+| Investigation and regulatory flagging | Yes | LLM agent with tools | Gather evidence, apply AML and sanctions rules, decide whether to flag |
+| Case summary | Yes | LLM agent | Draft the analyst report from case facts |
+| Supervisor | No (rule based) | Router | Conditional routing, loop control, human interrupt |
 
----
+**Design decisions:**
+- Only two nodes are LLM agents. Parsing and scoring do not need an LLM, and using one there would add cost and nondeterminism for no gain.
+- The supervisor routes on explicit conditions (score, evidence status, loop count). An LLM router would add nothing to a flow this structured.
+- Real autonomy sits in the investigation agent, which decides which tools to call and when it has enough evidence.
+- Semantic Kernel provides the memory abstraction and the shared tool plugins. LangGraph owns control flow.
 
-## 5. Skills demonstration matrix
+**Capabilities demonstrated:** conditional routing, tool use, a bounded loop, vector memory, checkpointing, and a human interrupt with resume.
+
+## 5. Modelling track
+
+About 30% of the effort. This is the main evidence for data scientist and ML engineer roles.
+
+**Dataset:** PaySim (synthetic mobile money transactions). Expected properties, to be confirmed on load: about 6.3 million rows, about 0.1% fraud, fraud limited to transfer and cash out transaction types, and an hourly time step.
+
+**Method:**
+1. **Exploratory analysis** with a written summary of class balance, transaction types, and leakage risks.
+2. **Time based split** on the step column for train, validation, and test. No random split, to avoid leaking future behaviour.
+3. **Baseline ladder:** logistic regression, then gradient boosting (LightGBM or XGBoost), then a fine-tuned HuggingFace model.
+4. **Imbalance handling:** class weights first, resampling only if it helps on validation.
+5. **Metrics:** PR-AUC as the primary metric, recall at a fixed false positive rate, calibration, and a cost based decision threshold. ROC-AUC is reported but not used for selection, because it is misleading at this class balance.
+6. **Experiment tracking:** MLflow for every run, with parameters, metrics, and artifacts.
+7. **Error analysis:** a write-up of which fraud the best model misses and why.
+8. **Model selection:** the best model on the validation set is the one served. If the HuggingFace model loses to gradient boosting, the README says so and explains why.
+
+**Known issue to handle openly:** PaySim's balance columns make fraud unusually easy to separate, so near perfect scores are common. The write-up will report results with and without those features, so the numbers are not read as better than they are.
+
+**SageMaker use:** one training job for the final HuggingFace fine-tune, with the artifact registered in the model registry. Iteration happens locally or on free notebook GPUs.
+
+## 6. Agent evaluation harness
+
+Part of the 30% multi-agent effort. This is the main evidence for AI engineer roles.
+
+**Test set:** 50 to 100 hand labelled synthetic cases covering clear fraud, clear non-fraud, sanctions hits, and ambiguous cases.
+
+| What is measured | How |
+|---|---|
+| Routing correctness | Expected path against actual path through the graph |
+| Flagging quality | Precision and recall against case labels |
+| Tool use | Whether the right tools were called for the case type |
+| Summary faithfulness | Deterministic checks that amounts, account IDs, and flags in the summary match case facts, plus an LLM judge for unsupported claims |
+| Guardrails | Adversarial inputs, such as prompt injection inside a transaction memo field |
+| Cost and latency | Tokens and seconds per case |
+
+**In CI:** a small fixed subset runs on every push using recorded LLM responses, so the pipeline costs nothing. The full set runs on demand against Bedrock.
+
+## 7. Non-goals
+
+- Not a production fraud system. Results are illustrative.
+- Not regulatorily compliant. The AML and SAR logic is plausible, not audited.
+- No real customer data. All data is synthetic.
+- Not multi-tenant. One bank, one analyst role.
+- Not high throughput. Demo scale only.
+- No always-on cloud deployment or live URL.
+- No feature store, streaming analytics, lakehouse, or batch ETL in Phase 1 (see section 13).
+- No graph neural network in Phase 1 (see section 13).
+- No mobile app or customer facing interface.
+
+## 8. Skills matrix
 
 | Skill | Feature that justifies it | Depth |
 |---|---|---|
-| LangGraph multi-agent orchestration | Supervisor routes four specialist agents; HITL interrupts pause for analyst approval; checkpointing persists graph state | **Live** |
-| AWS Bedrock + Guardrails | LLM calls for case summarisation; Guardrails filter the regulatory-adjacent output | **Live** (Claude Haiku to keep token cost ~cents per demo) |
-| HuggingFace fine-tuning | Custom transaction classifier fine-tuned on PaySim synthetic fraud dataset | **Live** (one-time training, artifact in S3) |
-| SageMaker | Training jobs (one-shot), model registry, Serverless Inference endpoint | **Live** (Serverless = pay-per-call, no idle cost) |
-| Semantic Kernel | Memory abstraction + shared skill plugins (sanctions-lookup, geo-risk-lookup) callable from any agent | **Live** |
-| FastAPI | Analyst-facing API — case queries, approval/reject endpoints, auth middleware | **Live** |
-| React | Case review dashboard with approve/reject flow and drift-metric panel | **Live** |
-| EKS | Production deployment target | **Documented + spin-up-on-demand** — Terraform deploys it; live only during demo recording; torn down between job-hunt windows |
-| Prometheus + CloudWatch | Prometheus runs on EKS (live when EKS is up); CloudWatch always-on for metrics, logs, drift alarms | **Live (CloudWatch) / on-demand (Prometheus)** |
-| Cognito + IAM | Analyst auth via Cognito; least-privilege IAM roles per agent and per service | **Live** |
-| Kinesis | Streaming ingestion of transaction events | **Documented + on-demand** — single shard during demos, swap to local replay for daily dev |
-| GitHub Actions → ECR → EKS | CI pipeline runs pytest + regression suite, builds image, pushes to ECR, deploys to EKS | **Live** (pipeline always runs on push; deploy step gated by manual trigger to control cost) |
-| DynamoDB | Case store with review lifecycle | **Live** (free tier covers it forever) |
-| Aurora Serverless v2 (Postgres + pgvector) | Transaction store and vector memory store consolidated | **Live** (scales to zero ACU when idle) 🟡 alternative: keep RDS + OpenSearch separate if reviewer-target weights "more services on the diagram" higher |
-| SageMaker Model Monitor | Scheduled drift detection on classifier inputs and outputs | **Live** (daily schedule, cheap) |
+| Fraud modelling | Baseline ladder, time based split, imbalance handling | Core |
+| Model evaluation | PR-AUC, recall at fixed FPR, calibration, cost based threshold, error analysis | Core |
+| Experiment tracking (MLflow) | Every training run logged and compared | Core |
+| HuggingFace fine-tuning | Fine-tuned candidate in the baseline ladder | Core |
+| LangGraph orchestration | Conditional routing, loop, checkpoints, human interrupt | Core |
+| LLM agents with tool use | Investigation agent chooses tools and decides when evidence is sufficient | Core |
+| Agent evaluation | Labelled case set, faithfulness checks, regression suite in CI | Core |
+| Semantic Kernel | Vector memory and shared tool plugins | Core |
+| AWS Bedrock | LLM for the two agents | On demand |
+| FastAPI | Analyst API with approve and reject endpoints | Core |
+| React | Case review dashboard | Core (kept simple) |
+| Testing and CI (Pytest, GitHub Actions) | Unit tests, model regression tests, agent regression suite | Core |
+| Containers and Kubernetes | Same manifests run on local kind and on EKS | Core locally, EKS on demand |
+| SageMaker | One training job and model registry entry | On demand |
+| Drift monitoring (Evidently) | Scheduled drift report on scores and inputs | Core (light) |
+| Prometheus, Grafana, CloudWatch | Basic service and model metrics | Light |
+| Cognito, IAM, SSM | Analyst login, least privilege roles, secrets | Light |
+| Kinesis | Streaming ingestion variant | Documented |
+| SageMaker Model Monitor | AWS native drift detection | Documented |
 
 **Depth legend:**
-- **Live** = running in AWS, reviewer can hit it
-- **Documented + on-demand** = Terraform + README explain it; spun up only during demo recording, torn down after
-- **Stubbed** = mocked, with notes on what the real version would do
+- **Core:** built, tested, and shown in the demo. Runs locally at no cost.
+- **On demand:** real AWS usage, switched on only when needed and paid from credits.
+- **Light:** minimal working version, not a focus.
+- **Documented:** described in the README with configuration, not running.
 
----
+**Effort split:** about 30% modelling, 30% multi-agent system and evaluation, 40% application and infrastructure.
 
-## 6. Constraints
+## 9. Architecture summary (v3)
+
+| Layer | Phase 1 choice | Paid alternative, on demand or documented |
+|---|---|---|
+| Ingestion | PaySim replay script into SQS with a dead letter queue | Kinesis |
+| Compute | Local Kubernetes (kind) | EKS |
+| Agents and API | LangGraph and FastAPI in the cluster | Same images on EKS |
+| Classifier serving | Model served in a pod | SageMaker Serverless Inference |
+| LLM | Bedrock (Haiku class model), Ollama for development | None |
+| Transaction store and vector memory | Postgres with pgvector in the cluster | Aurora, OpenSearch |
+| Case store | DynamoDB | None needed |
+| Auth and secrets | Cognito, SSM Parameter Store | Secrets Manager |
+| Drift | Evidently | SageMaker Model Monitor |
+| Observability | Prometheus, Grafana, CloudWatch within free limits | None needed |
+| Registry and CI/CD | GitHub Actions, ECR Public, deploy to kind | Deploy to EKS |
+
+Nothing runs on AWS when the project is idle.
+
+## 10. Constraints
 
 | Constraint | Value |
 |---|---|
-| Cost ceiling (idle, between job hunts) | **< $10/month** (achieved by tearing down EKS, Kinesis, SageMaker endpoint; leaving only DynamoDB, S3, ECR, CloudWatch logs) |
-| Cost ceiling (active, during job hunt) | **< $80/month** (EKS control plane + 1 small node + Kinesis 1 shard + Aurora minimum ACU + CloudWatch) |
-| Cost during demo recording | One-off ~$5–10 for a few hours of full-stack uptime |
-| Time budget to v1 | **6–8 weeks** at evenings + weekends 🟡 confirm |
-| Estimated effort | ~10–15 hours/week 🟡 confirm |
-| Hard deadline | None imposed; soft target = before next active job hunt 🟡 |
-| AWS account type | Personal account 🟡 confirm |
-| Repo | **Public** GitHub |
-| Billing alarms | $5, $20, $50 — set before first `terraform apply` |
+| AWS account | Personal, Paid plan since 12 Nov 2026 |
+| Credits | $136.65 remaining, expiring 20 May 2027 |
+| Extra credits available | Up to $60 from three unfinished activities, deadline about 20 Nov 2026 |
+| Cost guardrail | Monthly budget of $10 with alerts at 50% and 100% actual and 100% forecasted, credits excluded from the calculation |
+| Expected Phase 1 spend | A few dollars in total (Bedrock tokens, one SageMaker job, optional EKS demo days), all from credits |
+| Idle cost | $0 |
+| Hard rule | Tear down any EKS cluster or endpoint the same day it is created |
+| Hard date | All AWS resources deleted or the account closed before 20 May 2027 |
+| Time budget | 6 to 8 weeks at 10 to 15 hours a week **[confirm]** |
+| Repo | Public, GitHub |
 
----
+There is no hard spending cap on a Paid plan, so the budget alerts and the teardown rule are the protection against charges.
 
-## 7. Open questions blocking architecture (proposed answers)
+## 11. Demo script (three minutes)
 
-| Question | Proposed answer | Rationale |
-|---|---|---|
-| Hosting model | **Hybrid** — repo + recorded demo always available; live deploy spun up during active job hunts | Best of both: low idle cost, real live URL when it matters |
-| EKS live or documented-only | **Spin-up-on-demand** | Saves $73/month idle without dropping EKS from skill list |
-| ML model real or stubbed | **Real** — fine-tuned on PaySim | Stubbed classifiers are a portfolio downgrade |
-| Dataset | **PaySim** (Kaggle, synthetic, well-known) | Public baselines exist; no PII risk; small enough to fine-tune cheaply |
-| Inference | **SageMaker Serverless Inference** | Pay-per-call, scales to zero; cold start (~5–10s) acceptable for analyst-review workflow (not customer-facing) |
-| Vector store | **pgvector on Aurora Serverless v2** | Consolidates with transaction store; scales to zero; defensible architectural simplification 🟡 reversible if you want OpenSearch on the diagram for skill-coverage reasons |
-| Streaming | **Kinesis live during demos, local replay script for dev** | Keeps Kinesis on the skill list without paying for an always-on shard |
-| Agents at runtime | **Containers on EKS** | LangGraph supervisor benefits from in-memory graph state; matches the "enterprise deployment" narrative better than Lambda |
+**Setup (0:00 to 0:20):** architecture diagram and one sentence on what the system does.
 
----
+**Model evidence (0:20 to 1:00):** MLflow comparison of the baseline ladder. PR-AUC and recall at fixed FPR for each model, the chosen threshold, and one line from the error analysis.
 
-## 8. Demo script (3 minutes)
+**Agents at work (1:00 to 2:00):** run the replay script. Show the graph trace: a low risk transaction ends early, a high risk one goes to investigation. Show the investigation agent choosing tools, then the drafted case summary.
 
-**Setup (0:00–0:20)** — Screen shows architecture diagram. Voiceover: "BankGuard is a multi-agent fraud detection system I built to demonstrate production GenAI on AWS. Four specialist agents, a LangGraph supervisor, a fine-tuned HuggingFace classifier on SageMaker, and a human-in-the-loop analyst dashboard. Here's how it runs."
+**Human review (2:00 to 2:30):** the analyst opens the case in the dashboard and approves. The graph resumes and the case closes.
 
-**Act 1 — ingestion (0:20–0:50)** — Switch to terminal. Run the transaction replay script. Show events landing in Kinesis (CloudWatch metrics ticking up). Cut to the LangGraph trace view showing the ingestion agent normalising events.
+**Evaluation and close (2:30 to 3:00):** agent evaluation results table and a passing CI run. Point to the repo.
 
-**Act 2 — scoring and flagging (0:50–1:40)** — Show the supervisor routing to the anomaly scoring agent, which calls the SageMaker endpoint. Surface one transaction that scores high. Show the regulatory flagging agent matching it against a sanctions list. Show the case summary agent drafting a SAR-ready summary via Bedrock — point out Guardrails filtering the output.
-
-**Act 3 — human review (1:40–2:30)** — Switch to React dashboard. Analyst sees the flagged case with the AI-drafted summary, the classifier's confidence, and feature attribution. Analyst clicks Approve. LangGraph resumes, decision persists to DynamoDB.
-
-**Close (2:30–3:00)** — Cut to the Grafana dashboard showing request latency, drift score, and a CI/CD pipeline run from the most recent commit. Voiceover: "Full repo is linked below. Skills demonstrated: LangGraph orchestration, Bedrock, SageMaker fine-tuning and serving, EKS, Semantic Kernel, full CI/CD, observability, and AWS security. Happy to walk through any of it."
-
----
-
-## 9. Milestones
+## 12. Milestones
 
 | Milestone | Deliverable | Target |
 |---|---|---|
-| M1 — PRD locked | This doc reviewed and frozen | Week 0 |
-| M2 — Architecture v3 | Diagram aligned to PRD (pgvector, Serverless Inference, on-demand EKS) | Week 1 |
-| M3 — Local end-to-end skeleton | LangGraph graph wired with stub agents; FastAPI + React talking; runs on laptop | Week 2 |
-| M4 — Real ML model | PaySim fine-tuning job runs on SageMaker; classifier registered; Serverless endpoint live | Week 4 |
-| M5 — Cloud deployment | Terraform deploys full stack; CI/CD green; live URL works | Week 6 |
-| M6 — Demo recorded | 3-minute video published; README polished; PRD and ARCHITECTURE docs in repo | Week 7 |
-| M7 — Idle teardown | Terraform `destroy` for paid services; repo + video remain | Week 8 |
+| M0 | PRD and architecture v3 agreed; AWS guardrails set; credit activities done | Week 0 |
+| M1 | EDA, time based split, baseline ladder, MLflow tracking | Weeks 1 to 2 |
+| M2 | HuggingFace fine-tune, model selection, error analysis, `docs/MODELLING.md` | Week 3 |
+| M3 | LangGraph graph: deterministic nodes, two agents, tools, loop, human interrupt | Week 4 |
+| M4 | Agent evaluation harness and labelled case set, `docs/AGENT_EVAL.md` | Week 5 |
+| M5 | FastAPI, React dashboard, local Kubernetes deployment | Week 6 |
+| M6 | CI pipeline, drift check, basic observability, one SageMaker training job | Week 7 |
+| M7 | Demo recorded, README finished, AWS resources torn down | Week 8 |
 
----
+Modelling comes first on purpose. It is the part reviewers for these roles weigh most, and the agents need a real model to call.
 
-## 10. Risks and mitigations
+## 13. Phase 2 roadmap (about six months after Phase 1)
+
+Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
+
+| Capability | What it adds |
+|---|---|
+| Graph neural network scorer | Entity risk score from the transaction graph, alongside the tabular model, on a dataset with real graph structure (IEEE-CIS or Elliptic) |
+| Kafka (MSK) | Open source streaming path |
+| Batch ETL on Spark | Raw data to curated feature tables |
+| Lakehouse (Iceberg or Delta) | Analytical layer separate from the operational store |
+| Feature store | Consistent features for training and serving |
+| Streaming analytics | Real time aggregates such as account velocity |
+| Pre-filter before the agents | A cheap model screens most events so agents see only suspicious ones |
+| Batch orchestration | Airflow or Step Functions for ETL and retraining |
+| Automated retraining | Drift triggers a retraining job and a staged rollout |
+
+**Phase 1 choices that keep Phase 2 additive:**
+1. Queue based ingestion, so new consumers can be added without changing upstream code.
+2. The classifier sits behind one scoring interface, so models can be swapped or added.
+3. The graph is independent of the storage layer.
+4. Tools are Semantic Kernel plugins, so new ones can be added without rewriting agents.
+5. Kubernetes manifests work on both kind and EKS.
+
+## 14. Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Cost overrun while building | Med | High | Billing alarms at $5/$20/$50 set before first deploy; teardown checklist; daily cost dashboard for the first two weeks |
-| Scope creep | High | High | Non-goals list in §4; weekly check against milestones; cuts go to "v2 backlog" not v1 |
-| Reviewer can't follow demo | Med | High | Demo script written before build (this doc, §8); test video on a non-technical friend before publishing |
-| ML model performs poorly | Med | Med | PaySim has public baselines; target AUC ≥ 0.90 (achievable per Kaggle solutions); fallback = present it honestly with the metric |
-| LangGraph + Semantic Kernel split looks contrived | Med | Med | ARCHITECTURE.md has a one-paragraph crisp justification; SK is constrained to memory + 2 specific skills, nothing else |
-| EKS cold spin-up wastes demo-recording time | Low | Med | Practice teardown/spin-up cycle once before recording; have a fallback `docker compose` local stack |
-| Cognito + IAM setup eats more time than expected | Med | Low | Time-box to 1 week; if blocked, ship with a hard-coded analyst user and document the production auth path |
-| HuggingFace fine-tuning doesn't converge in budget | Low | Med | Use a small distilled model (DistilBERT-style) or tabular MLP; PaySim is small enough that training is cheap |
-| Job hunt timing changes | Med | Low | The hybrid hosting model handles this — spin up when needed, tear down when not |
+| Unexpected AWS charge | Low | High | $10 budget with alerts, same day teardown, hard date of 20 May 2027 |
+| PaySim results look too good to be credible | High | Medium | Report with and without the balance features; time based split; say so plainly |
+| HuggingFace model loses to gradient boosting | Medium | Low | Expected and acceptable. Serve the winner and explain the result |
+| Agent evaluation set too small to be meaningful | Medium | Medium | At least 50 cases across four categories; report counts with every score |
+| Scope creep | High | High | Non-goals in section 7; cuts go to Phase 2 |
+| Local machine cannot run the full stack | Medium | Medium | Keep the cluster small; run Bedrock instead of a local model for demos |
+| Multi-agent design looks contrived | Medium | Medium | Only two LLM agents, each justified in section 4 |
+| Infrastructure consumes the schedule | Medium | High | Infrastructure work starts in week 6, after modelling and agents are done |
 
----
+## 15. Items to confirm
 
-## 11. v2 roadmap — deferred ~6 months post-v1
-
-> **Status: not in scope for v1.** This section exists to (a) signal to reviewers that BankGuard's v1 boundaries are deliberate, not naive, and (b) preserve forward-compatible decisions in v1 so v2 is additive, not a rewrite.
-
-**v2 scope themes:** big-data processing, real ETL, streaming analytics, lakehouse, and a proper feature store. Driven by the realisation that v1's "agents process every event" pattern doesn't scale past demo volume — at production scale, you need cheap pre-filtering and a real analytical data layer.
-
-| v2 capability | What it adds | Why deferred from v1 |
-|---|---|---|
-| **Kafka (MSK) alongside Kinesis** | Open-source-native streaming path; reviewers see both AWS-native and OSS-native ingestion | Kinesis covers the streaming skill demonstration for v1; adding Kafka in v1 is double-counting the same skill |
-| **Batch ETL on Spark (EMR Serverless or Glue)** | Real ETL job: PaySim raw → S3 → Spark → curated feature tables → SageMaker training | v1 trains directly on PaySim CSV; sufficient for demo, but not a credible big-data story |
-| **Iceberg/Delta lakehouse on S3** | Analytical layer separate from operational Aurora; CDC from Aurora feeds the lake | v1 collapses operational + analytical into Aurora to fit cost ceiling |
-| **Feature store (Feast or SageMaker Feature Store)** | Anomaly scoring agent pulls features from the store instead of computing inline; enables training/serving consistency | v1 non-goal — adds infra without changing the agent narrative |
-| **Streaming analytics (Flink on Kinesis Data Analytics)** | Real-time aggregates (per-account velocity, geo-anomaly windows) that feed the scoring agent as additional features | Parallel consumer of the existing event log; clean v2 add |
-| **Pre-filter before agent pipeline** | Cheap streaming classifier (e.g. XGBoost on velocity features) screens out 99% of events; agents only see the suspicious 1% | Demonstrates *production* judgment about when LLM-agents are too expensive — but only meaningful at real volume |
-| **Airflow or Step Functions for batch orchestration** | Schedules ETL DAGs, retraining, lakehouse maintenance | v1 has no batch jobs to orchestrate; only meaningful once ETL exists |
-| **Real-time / online retraining loop** | Drift detection triggers an automated retraining job; new model registered, A/B rolled out | v1 has Model Monitor surfacing drift, but retraining is manual |
-| **Iceberg time-travel for case audit** | Regulatory-grade audit trail — "show me the exact state of the transaction store when this SAR was filed" | v1's DynamoDB case log is sufficient for the demo; lakehouse time-travel is overkill at v1 scale |
-
-### Forward-compatible decisions already in v1
-
-These v1 calls are made specifically so v2 is additive rather than a rewrite:
-
-1. **Event-driven ingress (Kinesis)** rather than REST submission of transactions — means v2 can fan out the same event log to Spark, Flink, lakehouse, and the pre-filter without touching upstream code
-2. **SageMaker model registry** for the v1 classifier — v2 retraining loops can register new versions against the same registry
-3. **LangGraph state graph** decoupled from data layer specifics — when Aurora is split into operational-only + lakehouse in v2, the agents don't change
-4. **Semantic Kernel skills as plugins** — v2 can add a "feature-store-lookup" skill without rewriting agents
-5. **Terraform-first deployment** — v2 additions land as new modules, not as manual AWS console clicks layered on v1
-
-### What v2 would *not* do
-
-- Not multi-tenant even in v2 — the project stays single-bank
-- Not real PII — still synthetic data, just more of it
-- Not a real fraud product — accuracy still illustrative
-- Not real-time customer-facing decisions — analyst-mediated workflow remains the model
-
-### Estimated v2 timing
-
-~6 months after v1 ships. Trigger conditions: (a) v1 has been used in actual interviews and feedback warrants expansion, or (b) Saptarshi wants to demonstrate big-data / data-engineering skills explicitly for a different role family (data platform, ML platform engineer at scale, etc.).
-
----
-
-
-
-1. **Target reviewer persona** — I assumed fintech/AI-product hiring managers. If you're targeting a specific company or role family, this should be more specific.
-2. **Time budget** — I assumed 6–8 weeks at 10–15 hrs/week. Adjust based on your actual availability.
-3. **AWS account** — assumed personal. If employer-provided or sandbox, cost constraints might relax.
-4. **Aurora + pgvector vs RDS + OpenSearch** — I chose consolidation for cost. If you'd rather have OpenSearch visible on the diagram for skill-coverage reasons, that's a one-line reversal.
-5. **Cost ceilings** — I picked $10 idle / $80 active. If you have a different number in mind, every "live vs documented" call shifts.
+1. Time budget of 6 to 8 weeks at 10 to 15 hours a week.
+2. "Phase 1" and "Phase 2" as the names for the project versions.
+3. Whether SageMaker Serverless Inference should be switched on for the demo recording, to show SageMaker serving as well as training.
+4. Whether the React dashboard should stay minimal, as assumed here.
