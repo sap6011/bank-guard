@@ -1,6 +1,6 @@
 # BankGuard: Product Requirements Document
 
-**Status:** Draft v2, 12 Nov 2026. Supersedes draft v1.
+**Status:** Draft v3, 12 Nov 2026. Supersedes draft v2. Dataset changed from PaySim to the IBM AML dataset (HI-Small).
 **Matches:** Architecture v3 (zero idle cost).
 **Naming:** "Phase 1" is the first complete build described here. "Phase 2" is the upgrade planned about six months later (section 13). Diagram versions (v1, v2, v3) are a separate numbering.
 
@@ -8,7 +8,7 @@ Items marked **[confirm]** are assumptions Sap should confirm or override.
 
 ## 1. Brief
 
-BankGuard is a portfolio project that shows applied machine learning and AI engineering through a bank fraud detection system. It combines a rigorously evaluated fraud classifier with a LangGraph multi-agent investigation workflow that has human review built in. It targets data scientist, ML engineer, and AI engineer roles. Success means a reviewer can see, in under five minutes, evidence of sound modelling judgment, measurable agent quality, and the ability to ship the result. The project lives in a public GitHub repo with a recorded three minute demo. It runs locally at zero cost, with AWS services used on demand and paid from account credits.
+BankGuard is a portfolio project that shows applied machine learning and AI engineering through a bank financial crime detection system focused on money laundering. It combines a rigorously evaluated laundering classifier with a LangGraph multi-agent investigation workflow that has human review built in. It targets data scientist, ML engineer, and AI engineer roles. Success means a reviewer can see, in under five minutes, evidence of sound modelling judgment, measurable agent quality, and the ability to ship the result. The project lives in a public GitHub repo with a recorded three minute demo. It runs locally at zero cost, with AWS services used on demand and paid from account credits.
 
 ## 2. Audience and reviewer journey
 
@@ -38,7 +38,7 @@ End to end, the system does the following:
 
 1. **Ingest** synthetic transaction events from a replay script through a queue.
 2. **Normalise and enrich** each event (deterministic code).
-3. **Score** fraud risk with the best model from the modelling track (deterministic model call).
+3. **Score** laundering risk with the best model from the modelling track (deterministic model call).
 4. **Route** on the score: low risk ends the run, high risk goes to investigation.
 5. **Investigate** with an LLM agent that chooses its own tools: sanctions lookup, account history query, and similar past cases from vector memory.
 6. **Loop** when evidence is insufficient: the supervisor sends the case back for more evidence, up to a fixed limit.
@@ -47,7 +47,7 @@ End to end, the system does the following:
 9. **Resume** when the analyst approves or rejects. The decision is stored.
 10. **Monitor** score drift on a schedule.
 
-**Happy path for the demo:** a replayed stream produces three flagged cases. One is a large transfer to a sanctioned counterparty. The investigation agent calls two tools, the summary agent drafts the report, the analyst approves, and the case closes.
+**Happy path for the demo:** a replayed stream produces three flagged cases. One is a large transfer to a watchlisted counterparty. The investigation agent calls two tools, the summary agent drafts the report, the analyst approves, and the case closes.
 
 ## 4. Multi-agent design
 
@@ -73,19 +73,52 @@ The multi-agent system is the core of the project. It takes about 30% of the eff
 
 About 30% of the effort. This is the main evidence for data scientist and ML engineer roles.
 
-**Dataset:** PaySim (synthetic mobile money transactions). Expected properties, to be confirmed on load: about 6.3 million rows, about 0.1% fraud, fraud limited to transfer and cash out transaction types, and an hourly time step.
+**Dataset:** IBM Transactions for Anti Money Laundering, HI-Small variant. Synthetic data published with the NeurIPS 2023 paper "Realistic Synthetic Financial Transactions for Anti-Money Laundering Models" (Altman et al.). Licence: Community Data License Agreement, exact version to be noted in the README. Three files are used: transactions, accounts, and laundering patterns.
+
+**Why this dataset:** it has sender and receiver accounts, a laundering label, and named laundering typologies, so the model, the agent tools, and the evaluation set all describe the same problem. PaySim was rejected as too easy. IEEE-CIS was rejected as the primary because it has no counterparties for the agents to investigate.
+
+**Verified from the downloaded files on 12 Nov 2026:**
+
+| Property | Value |
+|---|---|
+| Transactions | 5,078,345 |
+| Laundering transactions | 5,177 (about 0.10%) |
+| Date range | 1 to 18 Sep 2022 |
+| Accounts, entities, banks | 518,581 accounts, 166,207 entities, 30,470 banks |
+| Laundering attempts in the patterns file | 370, across 8 typologies |
+| Laundering transactions covered by a pattern | 3,209 of 5,177 |
+
+**Findings that shape the method:**
+1. **The last eight days are an artifact.** 1 to 10 Sep hold nearly all rows. 11 to 18 Sep hold about 1,100 rows, more than half of them laundering. A naive time split would make the date itself a giveaway.
+2. **Payment format is a shortcut.** ACH carries 4,483 of the 5,177 laundering rows. Wire and Reinvestment carry none.
+3. **Patterns cover only part of the positives.** About 1,970 laundering rows belong to no listed pattern.
+4. **Self transfers are common.** 591,347 rows move money from an account to itself. EDA decides how to treat them.
+5. **Two columns are both named `Account`.** They are renamed to sender and receiver accounts on load.
 
 **Method:**
-1. **Exploratory analysis** with a written summary of class balance, transaction types, and leakage risks.
-2. **Time based split** on the step column for train, validation, and test. No random split, to avoid leaking future behaviour.
-3. **Baseline ladder:** logistic regression, then gradient boosting (LightGBM or XGBoost), then a fine-tuned HuggingFace model.
-4. **Imbalance handling:** class weights first, resampling only if it helps on validation.
-5. **Metrics:** PR-AUC as the primary metric, recall at a fixed false positive rate, calibration, and a cost based decision threshold. ROC-AUC is reported but not used for selection, because it is misleading at this class balance.
-6. **Experiment tracking:** MLflow for every run, with parameters, metrics, and artifacts.
-7. **Error analysis:** a write-up of which fraud the best model misses and why.
-8. **Model selection:** the best model on the validation set is the one served. If the HuggingFace model loses to gradient boosting, the README says so and explains why.
+1. **Exploratory analysis** with a written summary of class balance, time structure, payment formats, currencies, and leakage risks.
+2. **Time based split within 1 to 10 Sep.** Proposed: train on 1 to 6 Sep, validate on 7 to 8 Sep, test on 9 to 10 Sep (about 64%, 19%, and 17% of rows). The 11 to 18 Sep tail is excluded from headline metrics and reported separately. No random split. The raw date is never a feature.
+3. **Features:**
+   - Transaction level: amount, currencies, a cross currency flag, payment format, hour of day.
+   - Graph derived, computed only from past transactions: incoming and outgoing counts and amounts per account over trailing windows, and number of distinct counterparties.
+   - Account attributes from the accounts file: bank and entity type.
+4. **Baseline ladder:** logistic regression, then gradient boosting (LightGBM or XGBoost), then a fine-tuned HuggingFace model.
+5. **Imbalance handling:** class weights first, resampling only if it helps on validation.
+6. **Metrics:** PR-AUC as the primary metric, recall at a fixed false positive rate, calibration, and a cost based decision threshold. ROC-AUC is reported but not used for selection, because it is misleading at this class balance.
+7. **Ablation:** every model is reported with and without payment format, so the shortcut is visible.
+8. **Experiment tracking:** MLflow for every run, with parameters, metrics, and artifacts.
+9. **Error analysis:** recall by laundering typology, and for laundering inside a listed pattern against laundering outside one.
+10. **Model selection:** the best model on the validation set is the one served. If the HuggingFace model loses to gradient boosting, the README says so and explains why.
 
-**Known issue to handle openly:** PaySim's balance columns make fraud unusually easy to separate, so near perfect scores are common. The write-up will report results with and without those features, so the numbers are not read as better than they are.
+**Expectation to state openly:** this is a hard dataset for per-transaction models, because much of the signal is in multi-hop structure. Modest scores with clear error analysis are the intended result, compared against the results reported in the dataset paper.
+
+**Supporting data built for the agents:** a small synthetic watchlist of sanctioned or high risk banks and entities, sampled from the accounts file and documented as synthetic. The dataset has no sanctions information of its own.
+
+**Stretch goals, only if on schedule after M2:**
+- Run the same pipeline on IEEE-CIS, to show a result on real data.
+- Use the LI-Small variant as a harder test set.
+
+The training pipeline is written to be dataset agnostic from the start, so both stay cheap to add.
 
 **SageMaker use:** one training job for the final HuggingFace fine-tune, with the artifact registered in the model registry. Iteration happens locally or on free notebook GPUs.
 
@@ -93,7 +126,7 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 
 Part of the 30% multi-agent effort. This is the main evidence for AI engineer roles.
 
-**Test set:** 50 to 100 hand labelled synthetic cases covering clear fraud, clear non-fraud, sanctions hits, and ambiguous cases.
+**Test set:** 50 to 100 labelled cases. Laundering cases are drawn from the 370 attempts in the patterns file, spread across the 8 typologies. They are balanced with clean cases, watchlist hits, and ambiguous cases.
 
 | What is measured | How |
 |---|---|
@@ -108,7 +141,7 @@ Part of the 30% multi-agent effort. This is the main evidence for AI engineer ro
 
 ## 7. Non-goals
 
-- Not a production fraud system. Results are illustrative.
+- Not a production financial crime system. Results are illustrative.
 - Not regulatorily compliant. The AML and SAR logic is plausible, not audited.
 - No real customer data. All data is synthetic.
 - Not multi-tenant. One bank, one analyst role.
@@ -122,7 +155,7 @@ Part of the 30% multi-agent effort. This is the main evidence for AI engineer ro
 
 | Skill | Feature that justifies it | Depth |
 |---|---|---|
-| Fraud modelling | Baseline ladder, time based split, imbalance handling | Core |
+| Financial crime modelling | Baseline ladder, time based split, imbalance handling, graph derived features | Core |
 | Model evaluation | PR-AUC, recall at fixed FPR, calibration, cost based threshold, error analysis | Core |
 | Experiment tracking (MLflow) | Every training run logged and compared | Core |
 | HuggingFace fine-tuning | Fine-tuned candidate in the baseline ladder | Core |
@@ -154,7 +187,7 @@ Part of the 30% multi-agent effort. This is the main evidence for AI engineer ro
 
 | Layer | Phase 1 choice | Paid alternative, on demand or documented |
 |---|---|---|
-| Ingestion | PaySim replay script into SQS with a dead letter queue | Kinesis |
+| Ingestion | Transaction replay script into SQS with a dead letter queue | Kinesis |
 | Compute | Local Kubernetes (kind) | EKS |
 | Agents and API | LangGraph and FastAPI in the cluster | Same images on EKS |
 | Classifier serving | Model served in a pod | SageMaker Serverless Inference |
@@ -202,7 +235,7 @@ There is no hard spending cap on a Paid plan, so the budget alerts and the teard
 | Milestone | Deliverable | Target |
 |---|---|---|
 | M0 | PRD and architecture v3 agreed; AWS guardrails set; credit activities done | Week 0 |
-| M1 | EDA, time based split, baseline ladder, MLflow tracking | Weeks 1 to 2 |
+| M1 | EDA, time based split, graph derived features, baseline ladder, MLflow tracking | Weeks 1 to 2 |
 | M2 | HuggingFace fine-tune, model selection, error analysis, `docs/MODELLING.md` | Week 3 |
 | M3 | LangGraph graph: deterministic nodes, two agents, tools, loop, human interrupt | Week 4 |
 | M4 | Agent evaluation harness and labelled case set, `docs/AGENT_EVAL.md` | Week 5 |
@@ -218,7 +251,7 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 
 | Capability | What it adds |
 |---|---|
-| Graph neural network scorer | Entity risk score from the transaction graph, alongside the tabular model, on a dataset with real graph structure (IEEE-CIS or Elliptic) |
+| Graph neural network scorer | Entity risk score from the transaction graph, alongside the tabular model, on the same IBM AML data |
 | Kafka (MSK) | Open source streaming path |
 | Batch ETL on Spark | Raw data to curated feature tables |
 | Lakehouse (Iceberg or Delta) | Analytical layer separate from the operational store |
@@ -240,7 +273,9 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Unexpected AWS charge | Low | High | $10 budget with alerts, same day teardown, hard date of 20 May 2027 |
-| PaySim results look too good to be credible | High | Medium | Report with and without the balance features; time based split; say so plainly |
+| Payment format or date acts as a shortcut and inflates scores | High | Medium | Ablation with and without payment format; split within 1 to 10 Sep; raw date never used as a feature |
+| Scores are modest on a hard dataset | Medium | Low | Expected. Compare with the dataset paper and lead with error analysis by typology |
+| Graph derived features leak future information | Medium | High | Compute them only from transactions earlier than the row being scored; add a test for it |
 | HuggingFace model loses to gradient boosting | Medium | Low | Expected and acceptable. Serve the winner and explain the result |
 | Agent evaluation set too small to be meaningful | Medium | Medium | At least 50 cases across four categories; report counts with every score |
 | Scope creep | High | High | Non-goals in section 7; cuts go to Phase 2 |
