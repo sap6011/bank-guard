@@ -47,3 +47,51 @@ def count_prior(event_codes, event_minutes, query_codes, query_minutes, window):
     events = np.sort(event_codes.astype(np.int64) * BIG + event_minutes)
     q = query_codes.astype(np.int64) * BIG + query_minutes
     return np.searchsorted(events, q, "left") - np.searchsorted(events, q - window, "left")
+
+def minutes_from_start(tx: pd.DataFrame) -> np.ndarray:
+    """Whole minutes since the earliest transaction."""
+    delta = tx["timestamp"] - tx["timestamp"].min()
+    return (delta.dt.total_seconds() // 60).to_numpy().astype(np.int64)
+
+
+def add_graph_features(tx: pd.DataFrame, windows: dict = WINDOWS) -> pd.DataFrame:
+    """Trailing activity counts for sender, receiver and the pair.
+
+    Must be given the full table, not one split: validation rows need
+    the train rows before them as history. Self transfers are scored
+    but never counted as events.
+    """
+    from_code, to_code = account_codes(tx)
+    minutes = minutes_from_start(tx)
+
+    real = ~tx["self_transfer"].to_numpy()
+    ev_from, ev_to, ev_min = from_code[real], to_code[real], minutes[real]
+
+    out = pd.DataFrame(index=tx.index)
+    for label, w in windows.items():
+        out[f"sender_out_{label}"] = count_prior(ev_from, ev_min, from_code, minutes, w)
+        out[f"sender_in_{label}"] = count_prior(ev_to, ev_min, from_code, minutes, w)
+        out[f"receiver_in_{label}"] = count_prior(ev_to, ev_min, to_code, minutes, w)
+        out[f"receiver_out_{label}"] = count_prior(ev_from, ev_min, to_code, minutes, w)
+
+    n_codes = int(max(from_code.max(), to_code.max())) + 1
+    _, pair_code = np.unique(from_code.astype(np.int64) * n_codes + to_code, return_inverse=True)
+    out["pair_prior_3d"] = count_prior(pair_code[real], ev_min, pair_code, minutes, WINDOWS["3d"])
+    return out
+
+def add_breadth_features(tx: pd.DataFrame, graph: pd.DataFrame) -> pd.DataFrame:
+    """How many *new* counterparties each side has dealt with in the last 3 days.
+
+    `graph` is the output of add_graph_features on the same table.
+    """
+    from_code, to_code = account_codes(tx)
+    minutes = minutes_from_start(tx)
+    real = ~tx["self_transfer"].to_numpy()
+    first_contact = real & (graph["pair_prior_3d"].to_numpy() == 0)
+
+    out = pd.DataFrame(index=tx.index)
+    out["sender_new_pair_out_3d"] = count_prior(
+        from_code[first_contact], minutes[first_contact], from_code, minutes, WINDOWS["3d"])
+    out["receiver_new_pair_in_3d"] = count_prior(
+        to_code[first_contact], minutes[first_contact], to_code, minutes, WINDOWS["3d"])
+    return out
