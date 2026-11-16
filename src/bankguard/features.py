@@ -95,3 +95,35 @@ def add_breadth_features(tx: pd.DataFrame, graph: pd.DataFrame) -> pd.DataFrame:
     out["receiver_new_pair_in_3d"] = count_prior(
         to_code[first_contact], minutes[first_contact], to_code, minutes, WINDOWS["3d"])
     return out
+
+def add_attribute_features(tx: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
+    """Owner attributes for the sender and receiver of each transaction.
+
+    `accounts` is the output of data.load_accounts. Accounts missing from
+    it get missing values; no transaction row is ever dropped or duplicated.
+    """
+    from_code, to_code = account_codes(tx)
+    n_codes = int(max(from_code.max(), to_code.max())) + 1
+
+    # One row per account code that appears in the transactions.
+    seen = pd.concat([
+        pd.DataFrame({"code": from_code, "bank_id": tx["from_bank"].to_numpy(),
+                      "account": tx["from_account"].astype(str).to_numpy()}),
+        pd.DataFrame({"code": to_code, "bank_id": tx["to_bank"].to_numpy(),
+                      "account": tx["to_account"].astype(str).to_numpy()}),
+    ]).drop_duplicates("code")
+    by_code = (
+        seen.merge(accounts, on=["bank_id", "account"], how="left")
+        .set_index("code")
+        .reindex(range(n_codes))
+    )
+
+    out = pd.DataFrame(index=tx.index)
+    for side, code in [("sender", from_code), ("receiver", to_code)]:
+        out[f"{side}_entity_type"] = by_code["entity_type"].to_numpy()[code]
+        out[f"{side}_bank_country"] = by_code["bank_country"].to_numpy()[code]
+        out[f"{side}_entity_accounts"] = by_code["entity_accounts"].to_numpy()[code]
+    entity = by_code["entity_id"].to_numpy()
+    out["same_entity"] = (entity[from_code] == entity[to_code]).astype(int)
+    out["same_bank"] = (tx["from_bank"].to_numpy() == tx["to_bank"].to_numpy()).astype(int)
+    return out

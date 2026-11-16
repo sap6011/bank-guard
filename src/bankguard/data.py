@@ -49,3 +49,19 @@ def split_by_date(tx: pd.DataFrame, splits: dict = SPLITS) -> dict[str, pd.DataF
         name: tx[(tx["date"] >= start) & (tx["date"] <= end)]
         for name, (start, end) in splits.items()
     }
+
+ACCOUNT_COLS = ["bank_name", "bank_id", "account", "entity_id", "entity_name"]
+
+
+def load_accounts(path: str | Path) -> pd.DataFrame:
+    """Read the accounts file and derive owner attributes, one row per (bank, account)."""
+    accounts = pd.read_csv(path, header=0, names=ACCOUNT_COLS)
+    # "Sole Proprietorship #123" -> "Sole Proprietorship"
+    accounts["entity_type"] = accounts["entity_name"].str.replace(r"\s*#\d+$", "", regex=True)
+    # "Germany Bank #45" -> "Germany". Names that do not fit the pattern become "Other".
+    accounts["bank_country"] = (
+        accounts["bank_name"].str.extract(r"^(.+?) Bank #\d+$")[0].fillna("Other")
+    )
+    # How many accounts the same owner holds. Counted before removing duplicates.
+    accounts["entity_accounts"] = accounts.groupby("entity_id")["account"].transform("size")
+    return accounts.drop_duplicates(["bank_id", "account"])
