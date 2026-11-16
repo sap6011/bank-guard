@@ -1,8 +1,9 @@
 """LightGBM training for the laundering model."""
 
-import pandas as pd
 from typing import Any
+
 import lightgbm as lgb
+import pandas as pd
 
 
 def fit_categories(X_train: pd.DataFrame, columns: list[str]) -> dict[str, list]:
@@ -19,18 +20,18 @@ def gbm_frame(X: pd.DataFrame, columns: list[str], categories: dict[str, list]) 
             out[c] = pd.Categorical(known, categories=categories[c])
     return out
 
-PARAMS: dict[str, Any] = dict(
-    n_estimators=2000,
-    learning_rate=0.03,
-    num_leaves=31,
-    min_child_samples=200,
-    reg_lambda=10.0,
-    subsample=0.8,
-    subsample_freq=1,
-    colsample_bytree=0.8,
-    metric="average_precision",
-    verbose=-1,
-)
+PARAMS: dict[str, Any] = {
+    "n_estimators": 2000,
+    "learning_rate": 0.03,
+    "num_leaves": 31,
+    "min_child_samples": 200,
+    "reg_lambda": 10.0,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "metric": "average_precision",
+    "verbose": -1,
+}
 
 
 def fit_gbm(X_train, y_train, X_val, y_val, columns, categories, seed: int = 42):
