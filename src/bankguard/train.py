@@ -5,7 +5,7 @@ Run from the repo root:  uv run python -m bankguard.train
 
 import argparse
 from pathlib import Path
-
+import mlflow
 import pandas as pd
 
 from bankguard.data import load_accounts, load_transactions, split_by_date
@@ -18,7 +18,7 @@ from bankguard.features import (
     add_graph_features,
     fit_currency_median,
 )
-from bankguard.model import fit_categories, fit_gbm, predict
+from bankguard.model import PARAMS, fit_categories, fit_gbm, predict
 
 GRAPH = [
     "sender_out_1d", "sender_in_1d", "receiver_in_1d", "receiver_out_1d",
@@ -66,6 +66,18 @@ def main(data_dir: Path, seed: int = 42) -> dict:
 
     result = evaluate(y_val, scores, "LightGBM, owner attributes")
     result["trees"] = model.best_iteration_
+
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("bankguard-laundering")
+    with mlflow.start_run(run_name=result["model"]):
+        mlflow.log_params({**PARAMS, "seed": seed, "n_features": len(FEATURES)})
+        mlflow.log_metrics({k.replace("%", "pct"): v for k, v in result.items() if k != "model"})
+        # Everything needed to score a new transaction the same way as in training.
+        mlflow.log_dict(
+            {"features": FEATURES, "categories": categories, "currency_median": currency_median},
+            "preprocessing.json",
+        )
+        mlflow.lightgbm.log_model(model, name="model")
     return result
 
 

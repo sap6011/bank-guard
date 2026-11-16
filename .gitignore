@@ -26,3 +26,7 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# MLflow (local experiment tracking)
+mlflow.db
+mlruns/

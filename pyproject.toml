@@ -14,6 +14,7 @@ dependencies = [
 dev = [
     "ipykernel>=7.4.0",
     "jupyterlab>=4.6.6",
+    "mlflow>=3.18.0",
     "pytest>=9.2.0",
 ]
 
