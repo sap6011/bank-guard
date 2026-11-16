@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -54,5 +53,5 @@ def test_attributes_follow_bank_and_account_together(accounts):
 def test_unknown_account_gets_missing_values_not_a_dropped_row(accounts):
     A = add_attribute_features(TX, accounts)
     assert pd.isna(A.loc[3, "receiver_entity_type"])
-    assert np.isnan(A.loc[3, "receiver_entity_accounts"])
+    assert pd.isna(A.loc[3, "receiver_entity_accounts"])
     assert A.loc[3, "same_entity"] == 0
