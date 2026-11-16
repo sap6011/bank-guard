@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 import mlflow
+import mlflow.lightgbm
 import pandas as pd
 
 from bankguard.data import load_accounts, load_transactions, split_by_date
