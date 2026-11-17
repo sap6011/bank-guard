@@ -48,3 +48,11 @@ def test_medians_come_from_train_not_from_the_data_being_scored():
     assert X["amount_vs_currency"].iloc[0] == pytest.approx(0.0)
     # A currency never seen in train has no typical size: missing, not guessed.
     assert np.isnan(X["amount_vs_currency"].iloc[1])
+
+def test_feature_contract_has_22_columns_and_no_shortcuts():
+    from bankguard.features import FEATURES
+
+    assert len(FEATURES) == 22
+    assert len(set(FEATURES)) == 22
+    for shortcut in ["payment_format", "payment_currency", "sender_bank_country", "receiver_bank_country"]:
+        assert shortcut not in FEATURES

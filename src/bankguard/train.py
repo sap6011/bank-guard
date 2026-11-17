@@ -8,45 +8,16 @@ from pathlib import Path
 
 import mlflow
 import mlflow.lightgbm
-import pandas as pd
 
 from bankguard.data import load_accounts, load_transactions, split_by_date
 from bankguard.evaluate import evaluate
 from bankguard.features import (
-    NUMERIC,
-    add_attribute_features,
-    add_breadth_features,
-    add_features,
-    add_graph_features,
+    CATEGORICAL,
+    FEATURES,
+    build_features,
     fit_currency_median,
 )
 from bankguard.model import PARAMS, fit_categories, fit_gbm, predict
-
-GRAPH = [
-    "sender_out_1d", "sender_in_1d", "receiver_in_1d", "receiver_out_1d",
-    "sender_out_3d", "sender_in_3d", "receiver_in_3d", "receiver_out_3d",
-    "pair_prior_3d",
-]
-BREADTH = ["sender_new_pair_out_3d", "receiver_new_pair_in_3d"]
-OWNER = [
-    "sender_entity_type", "sender_entity_accounts",
-    "receiver_entity_type", "receiver_entity_accounts",
-    "same_entity", "same_bank",
-]
-# No payment format, payment currency or bank country: the simulator shortcuts stay out.
-FEATURES = NUMERIC + GRAPH + BREADTH + OWNER
-CATEGORICAL = ["sender_entity_type", "receiver_entity_type"]
-
-
-def build_features(tx: pd.DataFrame, accounts: pd.DataFrame, currency_median: dict) -> pd.DataFrame:
-    """Every feature for every row of the full table."""
-    graph = add_graph_features(tx)
-    return (
-        add_features(tx, currency_median)
-        .join(graph)
-        .join(add_breadth_features(tx, graph))
-        .join(add_attribute_features(tx, accounts))
-    )
 
 
 def main(data_dir: Path, seed: int = 42) -> dict:

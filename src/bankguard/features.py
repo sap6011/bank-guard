@@ -127,3 +127,29 @@ def add_attribute_features(tx: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataF
     out["same_entity"] = (entity[from_code] == entity[to_code]).astype(int)
     out["same_bank"] = (tx["from_bank"].to_numpy() == tx["to_bank"].to_numpy()).astype(int)
     return out
+
+GRAPH = [
+    "sender_out_1d", "sender_in_1d", "receiver_in_1d", "receiver_out_1d",
+    "sender_out_3d", "sender_in_3d", "receiver_in_3d", "receiver_out_3d",
+    "pair_prior_3d",
+]
+BREADTH = ["sender_new_pair_out_3d", "receiver_new_pair_in_3d"]
+OWNER = [
+    "sender_entity_type", "sender_entity_accounts",
+    "receiver_entity_type", "receiver_entity_accounts",
+    "same_entity", "same_bank",
+]
+# No payment format, payment currency or bank country: the simulator shortcuts stay out.
+FEATURES = NUMERIC + GRAPH + BREADTH + OWNER
+CATEGORICAL = ["sender_entity_type", "receiver_entity_type"]
+
+
+def build_features(tx: pd.DataFrame, accounts: pd.DataFrame, currency_median: dict) -> pd.DataFrame:
+    """Every feature for every row of the full table."""
+    graph = add_graph_features(tx)
+    return (
+        add_features(tx, currency_median)
+        .join(graph)
+        .join(add_breadth_features(tx, graph))
+        .join(add_attribute_features(tx, accounts))
+    )
