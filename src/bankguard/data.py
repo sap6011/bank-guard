@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 TX_COLS = [
@@ -65,3 +66,38 @@ def load_accounts(path: str | Path) -> pd.DataFrame:
     # How many accounts the same owner holds. Counted before removing duplicates.
     accounts["entity_accounts"] = accounts.groupby("entity_id")["account"].transform("size")
     return accounts.drop_duplicates(["bank_id", "account"])
+
+# Columns that identify one transaction when matching the patterns file.
+PATTERN_KEY = ["timestamp", "from_bank", "from_account", "to_bank", "to_account", "amount_paid"]
+NO_PATTERN = "No listed pattern"
+
+
+def load_patterns(path: str | Path) -> pd.DataFrame:
+    """Read the patterns file: one row per transaction in a listed laundering attempt."""
+    rows, attempt_id, typology = [], -1, None
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line.startswith("BEGIN LAUNDERING ATTEMPT"):
+                attempt_id += 1
+                # "BEGIN LAUNDERING ATTEMPT - FAN-OUT:  Max 16-degree Fan-Out" -> "FAN-OUT"
+                typology = line.split(" - ", 1)[1].split(":")[0].strip()
+            elif line and not line.startswith("END LAUNDERING ATTEMPT"):
+                rows.append(line.split(",") + [attempt_id, typology])
+    p = pd.DataFrame(rows, columns=TX_COLS + ["attempt_id", "typology"])
+    p["timestamp"] = pd.to_datetime(p["timestamp"], format="%Y/%m/%d %H:%M")
+    p["from_bank"] = p["from_bank"].astype("int32")
+    p["to_bank"] = p["to_bank"].astype("int32")
+    p["amount_paid"] = p["amount_paid"].astype(float)
+    return p.drop_duplicates(PATTERN_KEY)[PATTERN_KEY + ["attempt_id", "typology"]]
+
+
+def typology_for(tx: pd.DataFrame, patterns: pd.DataFrame) -> np.ndarray:
+    """The laundering typology of each transaction, or NO_PATTERN."""
+    key = tx[PATTERN_KEY].copy()
+    key["from_account"] = key["from_account"].astype(str)
+    key["to_account"] = key["to_account"].astype(str)
+    merged = key.merge(patterns, on=PATTERN_KEY, how="left")
+    if len(merged) != len(tx):
+        raise ValueError("pattern rows matched more than one transaction")
+    return merged["typology"].fillna(NO_PATTERN).to_numpy()
