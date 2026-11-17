@@ -30,3 +30,4 @@ Thumbs.db
 # MLflow (local experiment tracking)
 mlflow.db
 mlruns/
+models/
