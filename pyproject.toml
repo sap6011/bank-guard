@@ -20,6 +20,7 @@ dev = [
 ]
 deep = [
     "accelerate>=1.16.0",
+    "tabpfn>=10.2.0",
     "torch>=2.14.1",
     "transformers>=5.23.0",
 ]
