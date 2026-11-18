@@ -1,6 +1,6 @@
 # BankGuard: Product Requirements Document
 
-**Status:** Draft v5, 19 Nov 2026. Supersedes draft v4. Updates the build status (packaging and CI done, step 4 under way), adds the step 4 model results overall and by laundering group, the evaluation rules fixed in advance, the notebook layout, and the TabPFN licence limit. Draft v4 added a public live demo, a revised build order and the first modelling results. Draft v3.1 added a parallel fraud scorer (FRAML) to the Phase 2 roadmap. Draft v3 moved the dataset from PaySim to the IBM AML dataset (HI-Small).
+**Status:** Draft v5, 19 Nov 2026. Supersedes draft v4. Updates the build status (packaging and CI done, step 4 under way), adds the evaluation rules fixed in advance, the notebook layout, and the TabPFN licence limit. Measured results are kept in the notebooks, with only the results that drive design decisions here. Draft v4 added a public live demo, a revised build order and the first modelling results. Draft v3.1 added a parallel fraud scorer (FRAML) to the Phase 2 roadmap. Draft v3 moved the dataset from PaySim to the IBM AML dataset (HI-Small).
 **Matches:** Architecture v3 (zero idle cost), with the public demo deployment described in section 9. The v2 architecture diagram is out of date (it still shows fraud detection, Kinesis, EKS and OpenSearch) and is to be replaced by a v3 diagram.
 **Naming:** "Phase 1" is the first complete build described here. "Phase 2" is the upgrade planned about six months later (section 13). Diagram versions (v1, v2, v3) are a separate numbering.
 
@@ -66,7 +66,7 @@ The multi-agent system is the core of the project. It takes about 30% of the eff
 - The supervisor routes on explicit conditions (score, evidence status, loop count). An LLM router would add nothing to a flow this structured.
 - Real autonomy sits in the investigation agent, which decides which tools to call and when it has enough evidence.
 - Semantic Kernel provides the memory abstraction and the shared tool plugins. LangGraph owns control flow.
-- The modelling results shape the agent design. About 13% of laundering in validation is sent by hub accounts and none of the five models tried so far ranks it (section 5). How such cases reach investigation, for example through rules or sampling, is an open design question for this stage.
+- The modelling results shape the agent design. About 13% of laundering in validation is sent by hub accounts and no model tried so far ranks it (section 5). How such cases reach investigation, for example through rules or sampling, is an open design question for this stage.
 
 **Capabilities demonstrated:** conditional routing, tool use, a bounded loop, vector memory, checkpointing, and a human interrupt with resume.
 
@@ -125,54 +125,12 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 
 **Expectation to state openly:** a single transaction carries little signal on this dataset. Most of it is in how accounts behave across transactions, and part of the measured performance rests on signals specific to the simulator. Results are therefore given as a ladder with the reason for each step, and compared against the results reported in the dataset paper.
 
-**Results to date (validation set, 19 Nov 2026).** The test set has not been used.
+**Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `06_model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. The test set has not been used.
 
-Baseline ladder (`02_baselines.ipynb`):
-
-| Model | PR-AUC | Recall at a 1% false positive rate |
-|---|---|---|
-| Rule: flag every ACH transaction | 0.007 | Not usable at this budget |
-| Rule: flag every new counterparty | 0.016 | Not usable at this budget |
-| Logistic regression, transaction features | 0.002 | 2% |
-| LightGBM, transaction features | 0.007 | 12% |
-| LightGBM with graph counts | 0.270 | 66% |
-| With counterparty breadth | 0.302 | 67% |
-| With owner attributes | 0.341 | 76% |
-| With bank country | 0.450 | 80% |
-
-None of the trained models above use payment format or payment currency. For comparison, the graph count model with both added scores 0.446.
-
-Alternative models, all on the same features up to owner attributes (no bank country), scored on all of validation (`06_model_comparison.ipynb`):
-
-| Model | PR-AUC | Recall at 0.1% FPR | Recall at 1% FPR | Notes |
-|---|---|---|---|---|
-| TabPFN-3.5-Fast, 200,000 row context | **0.398** | **0.397** | **0.796** | No training on our data. Fit 11 min, scoring 42 min on a T4 |
-| ModernBERT, 4 epochs | 0.353 | 0.375 | 0.761 | Kaggle |
-| LightGBM, owner attributes (reference) | 0.341 | 0.379 | 0.764 | |
-| ModernBERT, 2 epochs | 0.302 | 0.360 | 0.783 | Kaggle, about 254 min training |
-| DistilBERT | 0.228 | 0.296 | 0.726 | Laptop |
-| Qwen3-0.6B with LoRA | Pending | | | Training on Kaggle (1 epoch, 202,530 sentences), then a separate scoring run of about 6.5 hours |
-| TabPFN-2 | Not started | | | Commercially licensed version |
-| Sequence transformer | Not started | | | |
-
-Recall by laundering group at a 1% false positive rate:
-
-| Group | Laundering rows | LightGBM | DistilBERT | ModernBERT, 2 epochs | ModernBERT, 4 epochs | TabPFN-3.5-Fast |
-|---|---|---|---|---|---|---|
-| Patterned | 657 | 0.913 | 0.854 | 0.930 | 0.896 | **0.945** |
-| Unpatterned, quiet sender | 246 | 0.764 | 0.772 | 0.813 | 0.793 | **0.829** |
-| Unpatterned, hub sender | 133 | 0.023 | 0.008 | 0.000 | 0.030 | 0.000 |
-
-**What the results show:**
-1. **Graph derived features carry most of the signal.** They raise PR-AUC about forty times over transaction features alone.
-2. **Several strong signals are tied to the simulator.** Payment format (ACH holds 87% of laundering), the pair count (only 4.6% of transfers go to a counterparty not paid in the previous 3 days), and bank country. Each is ablated. Without the pair count the graph model scores 0.104.
-3. **Results are stable across seeds.** For example 0.331 to 0.342 with owner attributes, and 0.449 to 0.451 with bank country.
-4. **An early LightGBM setup was unstable** and its numbers were corrected in the repository history. The cause, the fix, and the corrected results are documented in the notebook.
-5. **TabPFN-3.5-Fast is the strongest model so far on every metric.** Its PR-AUC lead over LightGBM, 0.057, is about five times LightGBM's spread across seeds. It also leads on both detectable groups: patterned laundering (94.5% against 91.3%) and unpatterned laundering from quiet senders (82.9% against 76.4%, about 16 more of 246 cases). Peak memory at 200,000 rows was 9.2 GB of 16, so a larger context might fit; it has not been tested.
-6. **Hub sent laundering sets a ceiling.** It is 13% of laundering in validation, goes to known counterparties at normal amounts, and every model misses it (0% to 3% recall) across gradient boosting, two fine-tuned text transformers and a tabular foundation model. That five different learners fail on the same group is strong evidence that the 22 features carry no signal for it. Recall cannot exceed (657 + 246) / 1,036 = 87.2% unless it is detected. TabPFN's 79.6% is most of the way there, so further gains need new information about hub senders, such as graph structure beyond trailing counts, rather than a different model.
-7. **The two rules reproduce `02_baselines.ipynb`** (PR-AUC 0.0067 and 0.0156) and fit neither alert budget. Every trained model is 15 to 60 times better on PR-AUC.
-8. **ModernBERT after four epochs is level with LightGBM** within LightGBM's seed spread: slightly ahead on PR-AUC, slightly behind on both recalls. After two epochs it had the highest recall at a 1% budget of the models below TabPFN, mainly from unpatterned laundering from quiet senders (81.3% against 76.4%). These are single seed results.
-9. **Licence and serving limits.** The TabPFN-3.5 weights are under a non-commercial licence, and fine-tuned or distilled versions count as derivatives. It also needs a GPU holding the 200,000 row context to score. It is therefore treated as the research benchmark. TabPFN-2, which allows commercial use, is tested to see how close a usable foundation model comes. LightGBM scores in milliseconds on a CPU and is the likely model for the free live demo **[confirm at model selection]**.
+**Results that drive design decisions:**
+1. **Hub sent laundering is not detectable on current features.** It is about 13% of laundering in validation, and every model tried misses it. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
+2. **The strongest model cannot be served.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score. It is treated as the research benchmark, TabPFN-2 is tested as the commercially usable variant, and the free live demo is expected to serve a CPU model such as LightGBM **[confirm at model selection]**.
+3. **Simulator specific signals are strong** (payment format, the pair count, bank country). They are ablated, and the commercial path in section 16 depends on knowing which parts of the method would transfer.
 
 **Still to do in the modelling track:**
 1. Qwen3-0.6B LoRA: finish training, run the scoring notebook, log to MLflow, add to notebook 06.
@@ -369,7 +327,7 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 | Unexpected AWS charge | Low | High | $10 budget with alerts, same day teardown, hard date of 20 May 2027 |
 | Simulator specific signals inflate scores (payment format, pair count, bank country, date) | High | Medium | Each is ablated and results are given as a ladder; split within 1 to 10 Sep; raw date never used as a feature |
 | Public demo runs up LLM cost | Medium | High | Replay mode by default, a daily cap on live runs, and the $10 budget alert |
-| Hub sent laundering stays undetected | High | Medium | Five models already miss it. One targeted experiment on new hub sender information; if it fails, the recall ceiling of 87.2% is stated plainly |
+| Hub sent laundering stays undetected | High | Medium | Every model so far misses it. One targeted experiment on new hub sender information; if it fails, the recall ceiling of about 87% is stated plainly |
 | Scores are modest on a hard dataset | Medium | Low | Expected. Compare with the dataset paper and lead with error analysis by typology |
 | Graph derived features leak future information | Medium | High | Compute them only from transactions earlier than the row being scored; add a test for it |
 | Best model cannot be served (licence or GPU need, as with TabPFN-3.5) | High | Low | Report it as the research benchmark, test TabPFN-2, serve a CPU model in the demo, and explain the gap in `docs/MODELLING.md` |
