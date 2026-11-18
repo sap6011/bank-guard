@@ -7,18 +7,33 @@ from sklearn.metrics import average_precision_score, roc_curve
 from bankguard.data import NO_PATTERN
 
 
-def recall_at_fpr(y_true, scores, max_fpr: float) -> float:
+def recall_at_fpr(y_true, scores, max_fpr: float, sample_weight=None) -> float:
     """Share of laundering caught when at most `max_fpr` of normal rows are flagged."""
-    fpr, tpr, _ = roc_curve(y_true, scores)
+    fpr, tpr, _ = roc_curve(y_true, scores, sample_weight=sample_weight)
     return float(tpr[fpr <= max_fpr].max())
 
 
-def evaluate(y_true, scores, name: str, fprs=(0.001, 0.01)) -> dict:
+def evaluate(y_true, scores, name: str, fprs=(0.001, 0.01), sample_weight=None) -> dict:
     """PR-AUC plus recall at each false positive rate, as one results row."""
-    result = {"model": name, "pr_auc": float(average_precision_score(y_true, scores))}
+    ap = average_precision_score(y_true, scores, sample_weight=sample_weight)
+    result = {"model": name, "pr_auc": float(ap)}
     for f in fprs:
-        result[f"recall_at_{f:.1%}_fpr"] = recall_at_fpr(y_true, scores, f)
+        result[f"recall_at_{f:.1%}_fpr"] = recall_at_fpr(y_true, scores, f, sample_weight)
     return result
+
+
+def weighted_sample(y_true, n_negatives: int, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """All positive rows plus a random sample of negatives, with weights.
+
+    Each sampled negative stands in for len(negatives) / n_negatives rows, so
+    metrics computed with these weights estimate the metrics on all rows.
+    """
+    y = np.asarray(y_true)
+    pos, neg = np.flatnonzero(y == 1), np.flatnonzero(y == 0)
+    chosen = np.random.default_rng(seed).choice(neg, size=n_negatives, replace=False)
+    idx = np.sort(np.concatenate([pos, chosen]))
+    weight = np.where(y[idx] == 1, 1.0, len(neg) / n_negatives)
+    return idx, weight
 
 HUB_THRESHOLD = 1000  # sender payments in the previous 3 days
 GROUPS = ["patterned", "unpatterned, quiet sender", "unpatterned, hub sender"]
