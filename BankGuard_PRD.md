@@ -104,16 +104,16 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
    - Graph derived, computed only from earlier timestamps and excluding self transfers: incoming and outgoing counts for sender and receiver over trailing 1 and 3 day windows, and prior transfers between the same pair.
    - Counterparty breadth: recent transfers to and from new counterparties.
    - Account attributes from the accounts file: entity type, accounts per entity, same owner and same bank flags, and bank country.
-4. **Baseline ladder and alternative models:** two one line rules (ACH, new counterparty), logistic regression and LightGBM in `02_baselines.ipynb`. Then alternative models against LightGBM, each in its own notebook: DistilBERT and ModernBERT fine-tuned on the same features written as text, TabPFN-3.5-Fast (a tabular foundation model), Qwen3-0.6B fine-tuned with LoRA, TabPFN-2, and a sequence transformer over each account's transaction history. All models are compared on one table, overall and by laundering group, in `model_comparison.ipynb`.
+4. **Baseline ladder and alternative models:** two one line rules (ACH, new counterparty), logistic regression and LightGBM in `02_baselines.ipynb`. Then alternative models against LightGBM, each in its own notebook: DistilBERT and ModernBERT fine-tuned on the same features written as text, TabPFN-3.5-Fast (a tabular foundation model), Qwen3-0.6B fine-tuned with LoRA, and a sequence transformer over each account's transaction history. TabPFN-2 was planned as the commercially usable TabPFN but moved to the stretch goals on 20 Nov 2026, before any TabPFN-2 result, because the sequence model, which has its own weights, had already answered the question it was meant to answer. All models are compared on one table, overall and by laundering group, in `model_comparison.ipynb`.
 5. **Imbalance handling and stability:** logistic regression uses balanced class weights. LightGBM is trained unweighted with L2 regularisation and early stopping on validation PR-AUC, after a fixed length run without them proved unstable. Headline models are retrained across seeds. The text models train on the same 202,530 sentences (all training laundering plus 200,000 sampled normal rows), checked by matching hashes across machines.
 6. **Metrics:** PR-AUC as the primary metric, recall at 0.1% and 1% false positive rates, calibration, and a cost based decision threshold. ROC-AUC is reported but not used for selection, because it is misleading at this class balance.
 7. **Ablation:** signals that may depend on how the data was generated are reported separately: payment format, payment currency, the pair count, and bank country.
 8. **Experiment tracking:** MLflow (local SQLite store) for every run, with parameters, metrics, tags and artifacts. Runs trained on Kaggle are logged from their saved metrics files.
 9. **Error analysis:** recall by laundering typology, and separately for patterned laundering, unpatterned laundering from quiet senders, and unpatterned laundering from hub senders.
-10. **Model selection:** chosen on validation by the rules below, then scored once on the test set. The model with the best research result and the model served in the live demo may differ (licence and serving cost), and `docs/MODELLING.md` says which and why. If a model loses to gradient boosting, the README says so and explains why.
+10. **Model selection:** chosen on validation by the rules below; the sequence model (average of three seeds) was chosen on 20 Nov 2026 after the combination test. The model with the best research result and the model served in the live demo may differ (licence and serving cost), and `docs/MODELLING.md` says which and why. If a model loses to gradient boosting, the README says so and explains why.
 
 **Evaluation rules fixed in advance.** Each was set before the numbers it governs were seen, and is kept even when a result lands just outside it.
-1. The test set is used once, at the end, for the chosen model.
+1. The model choice is locked on validation before any test score exists. The chosen model's test score is the headline result. The other models are also scored on the test set for reporting only, to show whether the validation ranking holds, and their test scores never change the choice (amended 20 Nov 2026, after the choice and before any test score).
 2. Weighted sampling of validation is trusted only if, over 5 random samples, every model's weighted PR-AUC is within 0.01 of its full value. The check gave a largest difference of 0.0107, so slow models are scored on all of validation, split across separate runs where needed.
 3. TabPFN's context size is the largest that fits in GPU memory, chosen on memory alone and never on validation score.
 4. Models are compared at default or fixed settings. None is tuned on validation beyond early stopping, since LightGBM was not tuned either.
@@ -136,19 +136,18 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 
 **Expectation to state openly:** a single transaction carries little signal on this dataset. Most of it is in how accounts behave across transactions, and part of the measured performance rests on signals specific to the simulator. Results are therefore given as a ladder with the reason for each step, and compared against the results reported in the dataset paper.
 
-**Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. The test set has not been used.
+**Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. Test scores were measured only after the model choice was locked.
 
 **Results that drive design decisions:**
 1. **Hub sent laundering is not detectable on current inputs.** It is about 13% of laundering in validation, and every model tried misses it, including the sequence model that reads each account's recent history: for a hub, the last 64 transactions cover only minutes. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
-2. **Licence and serving shape the choice of served model.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score, so it is a research benchmark only; TabPFN-2 is tested as the commercially usable variant. The sequence model, the strongest so far on validation, has its own weights and is small enough for a CPU, but serving it needs each account's recent history at scoring time, which LightGBM's trailing counts also need in a simpler form. The served model is decided at model selection **[confirm]**.
+2. **Licence and serving shape the choice of served model.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score, so it is a research benchmark only. The sequence model, the strongest so far on validation, has its own weights and is small enough for a CPU, but serving it needs each account's recent history at scoring time, which LightGBM's trailing counts also need in a simpler form. The served model is decided at model selection **[confirm]**.
 3. **Simulator specific signals are strong** (payment format, the pair count, bank country). They are ablated, and the commercial path in section 16 depends on knowing which parts of the method would transfer.
+4. **The test days contain a shift.** 9 Sep has about 36% more transactions than any validation day, from about 70% more distinct senders, and every model's precision collapses on it, while 10 Sep scores as on validation. Drift of this kind is what the drift check in step 9 must detect, so it monitors the number of active accounts and the score distribution, not only feature averages.
 
 **Still to do in the modelling track:**
-1. Qwen3-0.6B LoRA: finish training, run the scoring notebook, log to MLflow, add to the comparison notebook.
-2. The time shift check for the sequence model (section 5, sequence model design, point 8), then TabPFN-2.
-3. The combination test, model choice, and one final score on the test set.
-4. `docs/MODELLING.md`.
-5. A targeted experiment on hub sent laundering **[confirm whether still planned]**.
+1. Test set predictions for TabPFN-3.5 and ModernBERT on Kaggle, and for Qwen after the weekly quota resets, added to the test table for reporting only.
+2. `docs/MODELLING.md`.
+3. A targeted experiment on hub sent laundering **[confirm whether still planned]**.
 
 **Supporting data built for the agents:** a small synthetic watchlist of sanctioned or high risk banks and entities, sampled from the accounts file and documented as synthetic. The dataset has no sanctions information of its own.
 
@@ -156,6 +155,7 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 - Run the same pipeline on IEEE-CIS, to show a result on real data.
 - Use the LI-Small variant as a harder test set.
 - A larger TabPFN context (for example 400,000 rows), under the same memory-only rule.
+- TabPFN-2, the version licensed for commercial use: the same 202,530 training rows split into 27 bags of about 9,940 rows (within its 10,000 row limit), each scored on validation and averaged, at default settings.
 
 The training pipeline is written to be dataset agnostic from the start, so these stay cheap to add.
 
@@ -200,7 +200,7 @@ Part of the 30% multi-agent effort. This is the main evidence for AI engineer ro
 | Model evaluation | PR-AUC, recall at fixed FPR, calibration, cost based threshold, error analysis, rules fixed in advance | Core |
 | Experiment tracking (MLflow) | Every training run logged and compared | Core |
 | HuggingFace fine-tuning | DistilBERT, ModernBERT, and Qwen3-0.6B with LoRA (PEFT) in the model comparison | Core |
-| Tabular foundation models | TabPFN-3.5 as benchmark, TabPFN-2 as the commercially usable variant | Core |
+| Tabular foundation models | TabPFN-3.5 as a benchmark, with its licence limits | Core |
 | LangGraph orchestration | Conditional routing, loop, checkpoints, human interrupt | Core |
 | LLM agents with tool use | Investigation agent chooses tools and decides when evidence is sufficient | Core |
 | Agent evaluation | Labelled case set, faithfulness checks, regression suite in CI | Core |
@@ -298,7 +298,7 @@ Revised on 16 Nov 2026, status updated 19 Nov 2026. A thin end to end version an
 | 1 | Baselines notebook: EDA, split, features, baseline ladder, ablations, error analysis | Done, closing summary included. Targeted hub sender experiment moved to step 4 **[confirm]** |
 | 2 | Packaging: notebook code moved into `src/bankguard/`, with tests and MLflow tracking | Done. Data, features, evaluate, model, train and text modules, pytest suite, ruff, MLflow. Installable from GitHub, which the Kaggle notebooks use |
 | 3 | Continuous integration: GitHub Actions runs the tests on every push | Done. Lint (ruff) then pytest on every push to main and on pull requests |
-| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs), TabPFN-3.5-Fast and the sequence model (main run) done. Qwen3-0.6B LoRA trained and being scored. The sequence model's time shift check, TabPFN-2, the combination test, model choice, test score and write-up remain |
+| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs), TabPFN-3.5-Fast and the sequence model (main run) done. Qwen3-0.6B LoRA and the sequence model's time shift check done; TabPFN-2 moved to stretch goals. Combination test done (it scored below the sequence model), the sequence model chosen, and its test score measured, with LightGBM and DistilBERT for reference. Test scores for the Kaggle models and `docs/MODELLING.md` remain |
 | 5 | Thin end to end version: saved model behind a FastAPI service, one basic page, a container | Not started |
 | 6 | Continuous deployment: GitHub Actions builds and deploys the container. First live link | Not started |
 | 7 | Multi-agent system: LangGraph graph, tools, two agents, loop, human interrupt | Not started |
@@ -341,7 +341,7 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 | Hub sent laundering stays undetected | High | Medium | Every model so far misses it, including the sequence model. One targeted experiment on new hub sender information; if it fails, the recall ceiling of about 87% is stated plainly |
 | Scores are modest on a hard dataset | Medium | Low | Expected. Compare with the dataset paper and lead with error analysis by typology |
 | Graph derived features leak future information | Medium | High | Compute them only from transactions earlier than the row being scored; add a test for it |
-| Best model cannot be served (licence or GPU need, as with TabPFN-3.5) | High | Low | Report it as the research benchmark, test TabPFN-2, serve a CPU model in the demo, and explain the gap in `docs/MODELLING.md` |
+| Best model cannot be served (licence or GPU need, as with TabPFN-3.5) | Medium | Low | Report it as the research benchmark, serve a model with usable weights in the demo, and explain the choice in `docs/MODELLING.md` |
 | Rules bent after seeing results | Medium | High | Evaluation rules fixed in advance (section 5) and kept even when a result lands just outside them |
 | Kaggle GPU quota or queue delays runs | Medium | Medium | Probe before every long run, split long jobs into training and scoring runs, check the weekly quota before launching |
 | Step 4 model list keeps growing | Medium | High | The list in section 5 is closed for Phase 1. New models go to stretch goals or Phase 2 |
