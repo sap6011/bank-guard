@@ -128,6 +128,9 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 4. **Model:** a small transformer trained from scratch (2 layers, 4 heads, width 64, one summary token per sequence), joined with the current row's features before the classifier. Trained on the laptop GPU.
 5. **Training rows:** the same 202,530 rows as the text models (all training laundering plus the same 200,000 normal rows). Every row still sees its full history.
 6. **Settings:** AdamW, learning rate 1e-3, batch 256, dropout 0.1, at most 20 epochs, keeping the epoch with the best PR-AUC on the same validation subset the BERT runs used and stopping after 3 epochs without improvement. Three seeds (42, 7 and 123), reported as mean and standard deviation.
+7. **History length and time shift:** a history length of 64 for both sides, set from the observed distribution (it covers the full history for about three quarters of laundering rows). Because the data starts on 1 Sep, training rows have shorter histories than validation rows (a full 64-event sender history for 11% of training rows against 36% of validation rows). The main run keeps the same 202,530 rows anyway, and results are reported by history length.
+8. **Time shift check, after the main run:** the sequence model and LightGBM are both trained on the subset of those 202,530 rows dated 3 to 6 Sep, with otherwise unchanged settings, and scored on all of validation. Sequence model against LightGBM on these rows shows whether history helps when both see mature rows; the main run against this run shows what the time shift cost. This check is reported as an ablation and does not enter model selection or the combination test.
+9. **Comparison entry:** the sequence model enters the comparison as the average of the three seeds' probabilities, labelled as such, with the single-seed mean and standard deviation shown beside it so the effect of averaging is visible. This was chosen before any results.
 
 **Compute:** laptop with an RTX 3060 (6 GB) for light work. Heavier runs on Kaggle (Tesla T4, 16 GB), with a short interactive probe for speed and memory before every long background run.
 
@@ -136,13 +139,13 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 **Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. The test set has not been used.
 
 **Results that drive design decisions:**
-1. **Hub sent laundering is not detectable on current features.** It is about 13% of laundering in validation, and every model tried misses it. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
-2. **The strongest model cannot be served.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score. It is treated as the research benchmark, TabPFN-2 is tested as the commercially usable variant, and the free live demo is expected to serve a CPU model such as LightGBM **[confirm at model selection]**.
+1. **Hub sent laundering is not detectable on current inputs.** It is about 13% of laundering in validation, and every model tried misses it, including the sequence model that reads each account's recent history: for a hub, the last 64 transactions cover only minutes. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
+2. **Licence and serving shape the choice of served model.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score, so it is a research benchmark only; TabPFN-2 is tested as the commercially usable variant. The sequence model, the strongest so far on validation, has its own weights and is small enough for a CPU, but serving it needs each account's recent history at scoring time, which LightGBM's trailing counts also need in a simpler form. The served model is decided at model selection **[confirm]**.
 3. **Simulator specific signals are strong** (payment format, the pair count, bank country). They are ablated, and the commercial path in section 16 depends on knowing which parts of the method would transfer.
 
 **Still to do in the modelling track:**
 1. Qwen3-0.6B LoRA: finish training, run the scoring notebook, log to MLflow, add to the comparison notebook.
-2. TabPFN-2, then the sequence transformer.
+2. The time shift check for the sequence model (section 5, sequence model design, point 8), then TabPFN-2.
 3. The combination test, model choice, and one final score on the test set.
 4. `docs/MODELLING.md`.
 5. A targeted experiment on hub sent laundering **[confirm whether still planned]**.
@@ -295,7 +298,7 @@ Revised on 16 Nov 2026, status updated 19 Nov 2026. A thin end to end version an
 | 1 | Baselines notebook: EDA, split, features, baseline ladder, ablations, error analysis | Done, closing summary included. Targeted hub sender experiment moved to step 4 **[confirm]** |
 | 2 | Packaging: notebook code moved into `src/bankguard/`, with tests and MLflow tracking | Done. Data, features, evaluate, model, train and text modules, pytest suite, ruff, MLflow. Installable from GitHub, which the Kaggle notebooks use |
 | 3 | Continuous integration: GitHub Actions runs the tests on every push | Done. Lint (ruff) then pytest on every push to main and on pull requests |
-| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs) and TabPFN-3.5-Fast done, and compared overall and by group in the comparison notebook. Qwen3-0.6B LoRA training. TabPFN-2, sequence transformer, combination test, test score and write-up remain |
+| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs), TabPFN-3.5-Fast and the sequence model (main run) done. Qwen3-0.6B LoRA trained and being scored. The sequence model's time shift check, TabPFN-2, the combination test, model choice, test score and write-up remain |
 | 5 | Thin end to end version: saved model behind a FastAPI service, one basic page, a container | Not started |
 | 6 | Continuous deployment: GitHub Actions builds and deploys the container. First live link | Not started |
 | 7 | Multi-agent system: LangGraph graph, tools, two agents, loop, human interrupt | Not started |
@@ -335,7 +338,7 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 | Unexpected AWS charge | Low | High | $10 budget with alerts, same day teardown, hard date of 20 May 2027 |
 | Simulator specific signals inflate scores (payment format, pair count, bank country, date) | High | Medium | Each is ablated and results are given as a ladder; split within 1 to 10 Sep; raw date never used as a feature |
 | Public demo runs up LLM cost | Medium | High | Replay mode by default, a daily cap on live runs, and the $10 budget alert |
-| Hub sent laundering stays undetected | High | Medium | Every model so far misses it. One targeted experiment on new hub sender information; if it fails, the recall ceiling of about 87% is stated plainly |
+| Hub sent laundering stays undetected | High | Medium | Every model so far misses it, including the sequence model. One targeted experiment on new hub sender information; if it fails, the recall ceiling of about 87% is stated plainly |
 | Scores are modest on a hard dataset | Medium | Low | Expected. Compare with the dataset paper and lead with error analysis by typology |
 | Graph derived features leak future information | Medium | High | Compute them only from transactions earlier than the row being scored; add a test for it |
 | Best model cannot be served (licence or GPU need, as with TabPFN-3.5) | High | Low | Report it as the research benchmark, test TabPFN-2, serve a CPU model in the demo, and explain the gap in `docs/MODELLING.md` |
@@ -371,5 +374,5 @@ Not in scope for Phase 1 or Phase 2. Recorded because it affects design choices 
 **Known gaps before any commercial use:**
 - Results on synthetic data do not transfer directly to real banks. Real data requires partnerships and compliance work.
 - The dataset licence terms must be checked for commercial use.
-- The strongest model so far (TabPFN-3.5) would need a paid licence.
+- TabPFN-3.5 would need a paid licence; the other models use weights that allow commercial use or are trained from scratch.
 - The AML and SAR logic is plausible, not audited (section 7).
