@@ -104,7 +104,7 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
    - Graph derived, computed only from earlier timestamps and excluding self transfers: incoming and outgoing counts for sender and receiver over trailing 1 and 3 day windows, and prior transfers between the same pair.
    - Counterparty breadth: recent transfers to and from new counterparties.
    - Account attributes from the accounts file: entity type, accounts per entity, same owner and same bank flags, and bank country.
-4. **Baseline ladder and alternative models:** two one line rules (ACH, new counterparty), logistic regression and LightGBM in `02_baselines.ipynb`. Then alternative models against LightGBM, each in its own notebook: DistilBERT and ModernBERT fine-tuned on the same features written as text, TabPFN-3.5-Fast (a tabular foundation model), Qwen3-0.6B fine-tuned with LoRA, TabPFN-2, and a sequence transformer over each account's transaction history. All models are compared on one table, overall and by laundering group, in `06_model_comparison.ipynb`.
+4. **Baseline ladder and alternative models:** two one line rules (ACH, new counterparty), logistic regression and LightGBM in `02_baselines.ipynb`. Then alternative models against LightGBM, each in its own notebook: DistilBERT and ModernBERT fine-tuned on the same features written as text, TabPFN-3.5-Fast (a tabular foundation model), Qwen3-0.6B fine-tuned with LoRA, TabPFN-2, and a sequence transformer over each account's transaction history. All models are compared on one table, overall and by laundering group, in `model_comparison.ipynb`.
 5. **Imbalance handling and stability:** logistic regression uses balanced class weights. LightGBM is trained unweighted with L2 regularisation and early stopping on validation PR-AUC, after a fixed length run without them proved unstable. Headline models are retrained across seeds. The text models train on the same 202,530 sentences (all training laundering plus 200,000 sampled normal rows), checked by matching hashes across machines.
 6. **Metrics:** PR-AUC as the primary metric, recall at 0.1% and 1% false positive rates, calibration, and a cost based decision threshold. ROC-AUC is reported but not used for selection, because it is misleading at this class balance.
 7. **Ablation:** signals that may depend on how the data was generated are reported separately: payment format, payment currency, the pair count, and bank country.
@@ -119,13 +119,13 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 4. Models are compared at default or fixed settings. None is tuned on validation beyond early stopping, since LightGBM was not tuned either.
 5. The combination test (equal-weight average of the ranks of the three models with the highest validation PR-AUC, nothing else tried) runs only after every model is finished. Model choice and the single test set score follow it.
 
-**Notebook layout.** A model run on Kaggle has two notebooks: a plain numbered one that runs on the laptop and tells the story (`04a_tabpfn.ipynb`: why the model, the laptop attempt, results loaded from Kaggle, MLflow logging, findings) and a "b" notebook holding the exact Kaggle run with its outputs (`04b_tabpfn_kaggle.ipynb`). Each code cell is followed by a short written paragraph on choices and findings.
+**Notebook layout.** Each model family has its own number: 03 for the BERT models, 04 for tabular foundation models, 05 for the LLM with LoRA, and 06 for the sequence model. The comparison of all models (`model_comparison.ipynb`) comes last and is numbered once the model list is final. Within a family, the "a" notebook runs on the laptop and tells the story (why the model, what was tried, results loaded from Kaggle, MLflow logging, findings), and later letters hold the exact Kaggle runs with their outputs, for example `04a_tabpfn.ipynb` and `04b_tabpfn_kaggle.ipynb`, or `05b_qwen_lora_train_kaggle.ipynb` and `05c_qwen_lora_score_kaggle.ipynb` for training and scoring. Each code cell is followed by a short written paragraph on choices and findings.
 
 **Compute:** laptop with an RTX 3060 (6 GB) for light work. Heavier runs on Kaggle (Tesla T4, 16 GB), with a short interactive probe for speed and memory before every long background run.
 
 **Expectation to state openly:** a single transaction carries little signal on this dataset. Most of it is in how accounts behave across transactions, and part of the measured performance rests on signals specific to the simulator. Results are therefore given as a ladder with the reason for each step, and compared against the results reported in the dataset paper.
 
-**Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `06_model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. The test set has not been used.
+**Results.** Measured results live in the notebooks: the baseline ladder and ablations in `02_baselines.ipynb`, and every model overall and by laundering group in `model_comparison.ipynb`. They are collected in `docs/MODELLING.md` at the end of step 4, and the README carries one headline table. The test set has not been used.
 
 **Results that drive design decisions:**
 1. **Hub sent laundering is not detectable on current features.** It is about 13% of laundering in validation, and every model tried misses it. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
@@ -133,7 +133,7 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 3. **Simulator specific signals are strong** (payment format, the pair count, bank country). They are ablated, and the commercial path in section 16 depends on knowing which parts of the method would transfer.
 
 **Still to do in the modelling track:**
-1. Qwen3-0.6B LoRA: finish training, run the scoring notebook, log to MLflow, add to notebook 06.
+1. Qwen3-0.6B LoRA: finish training, run the scoring notebook, log to MLflow, add to the comparison notebook.
 2. TabPFN-2, then the sequence transformer.
 3. The combination test, model choice, and one final score on the test set.
 4. `docs/MODELLING.md`.
@@ -287,7 +287,7 @@ Revised on 16 Nov 2026, status updated 19 Nov 2026. A thin end to end version an
 | 1 | Baselines notebook: EDA, split, features, baseline ladder, ablations, error analysis | Done, closing summary included. Targeted hub sender experiment moved to step 4 **[confirm]** |
 | 2 | Packaging: notebook code moved into `src/bankguard/`, with tests and MLflow tracking | Done. Data, features, evaluate, model, train and text modules, pytest suite, ruff, MLflow. Installable from GitHub, which the Kaggle notebooks use |
 | 3 | Continuous integration: GitHub Actions runs the tests on every push | Done. Lint (ruff) then pytest on every push to main and on pull requests |
-| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs) and TabPFN-3.5-Fast done, and compared overall and by group in notebook 06. Qwen3-0.6B LoRA training. TabPFN-2, sequence transformer, combination test, test score and write-up remain |
+| 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs) and TabPFN-3.5-Fast done, and compared overall and by group in the comparison notebook. Qwen3-0.6B LoRA training. TabPFN-2, sequence transformer, combination test, test score and write-up remain |
 | 5 | Thin end to end version: saved model behind a FastAPI service, one basic page, a container | Not started |
 | 6 | Continuous deployment: GitHub Actions builds and deploys the container. First live link | Not started |
 | 7 | Multi-agent system: LangGraph graph, tools, two agents, loop, human interrupt | Not started |
