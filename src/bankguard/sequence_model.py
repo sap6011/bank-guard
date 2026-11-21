@@ -43,11 +43,11 @@ class HistoryEncoder(nn.Module):
 class SequenceModel(nn.Module):
     """The current row's features plus the sender's and the receiver's history."""
 
-    def __init__(self, n_row, width=64, dropout=0.1):
+    def __init__(self, n_row, width=64, dropout=0.1, length=64):
         super().__init__()
         self.row = nn.Sequential(nn.Linear(n_row, width), nn.GELU())
-        self.sender = HistoryEncoder(width=width, dropout=dropout)
-        self.receiver = HistoryEncoder(width=width, dropout=dropout)
+        self.sender = HistoryEncoder(width=width, dropout=dropout, length=length)
+        self.receiver = HistoryEncoder(width=width, dropout=dropout, length=length)
         self.head = nn.Sequential(
             nn.Linear(3 * width, width), nn.GELU(), nn.Dropout(dropout), nn.Linear(width, 1)
         )
@@ -92,7 +92,7 @@ def load_models(directory, prep: dict, device="cpu") -> list[SequenceModel]:
     """The trained model of each seed, ready for scoring."""
     models = []
     for seed in prep["seeds"]:
-        model = SequenceModel(len(prep["row_columns"]))
+        model = SequenceModel(len(prep["row_columns"]), length=prep["history_length"])
         weights = torch.load(Path(directory) / f"sequence_seed{seed}.pt", map_location=device)
         model.load_state_dict(weights)
         models.append(model.to(device).eval())
