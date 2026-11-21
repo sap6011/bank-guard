@@ -3,15 +3,18 @@ name = "bank-guard"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.163.1",
     "lightgbm==4.7.0",
     "matplotlib==3.10.6",
     "numpy==2.3.5",
     "pandas==2.3.3",
     "scikit-learn==1.7.2",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "ipykernel>=7.4.0",
     "jupyterlab>=4.6.6",
     "mlflow>=3.18.0",

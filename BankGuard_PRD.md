@@ -207,7 +207,7 @@ Part of the 30% multi-agent effort. This is the main evidence for AI engineer ro
 | Semantic Kernel | Vector memory and shared tool plugins | Core |
 | AWS Bedrock | LLM for the two agents | On demand |
 | FastAPI | Analyst API with approve and reject endpoints | Core |
-| React | Case review dashboard | Core (kept simple) |
+| React | Transaction scoring page from step 5, grown into the case review dashboard | Core (focused, not a full admin app; decided 21 Nov 2026) |
 | Testing and CI (Pytest, ruff, GitHub Actions) | Lint and unit tests on every push; model and agent regression tests to follow | Core |
 | Continuous deployment (GitHub Actions) | Each push to main builds the container and updates the live demo | Core |
 | Containers (Docker) | One image serves the model and the API for the live demo | Core |
@@ -256,7 +256,7 @@ Nothing runs on AWS when the project is idle.
 | Live mode (limited) | Fresh agent runs against Bedrock, with a small daily cap so cost has a hard ceiling |
 | Delivery | GitHub Actions runs tests, builds the image, and deploys on each push to main |
 
-The host is chosen when the thin end to end version is built, after checking current free tiers. The first public version has no agents: it scores a chosen transaction and shows the main reasons.
+The host is chosen when the first end to end version is built, after checking current free tiers. The first public version has no agents: it scores a chosen transaction and shows the main reasons.
 
 ## 10. Constraints
 
@@ -291,7 +291,7 @@ There is no hard spending cap on a Paid plan, so the budget alerts and the teard
 
 ## 12. Build order and status
 
-Revised on 16 Nov 2026, status updated 19 Nov 2026. A thin end to end version and its deployment pipeline come before the multi-agent system, so a live link exists early and every later change ships through the same pipeline.
+Revised on 16 Nov 2026, status updated 21 Nov 2026. A first end to end version (the scoring service and page, without agents) and its deployment pipeline come before the multi-agent system, so a live link exists early and every later change ships through the same pipeline.
 
 | Step | Deliverable | Status |
 |---|---|---|
@@ -299,7 +299,7 @@ Revised on 16 Nov 2026, status updated 19 Nov 2026. A thin end to end version an
 | 2 | Packaging: notebook code moved into `src/bankguard/`, with tests and MLflow tracking | Done. Data, features, evaluate, model, train and text modules, pytest suite, ruff, MLflow. Installable from GitHub, which the Kaggle notebooks use |
 | 3 | Continuous integration: GitHub Actions runs the tests on every push | Done. Lint (ruff) then pytest on every push to main and on pull requests |
 | 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs), TabPFN-3.5-Fast and the sequence model (main run) done. Qwen3-0.6B LoRA and the sequence model's time shift check done; TabPFN-2 moved to stretch goals. Combination test done (it scored below the sequence model), the sequence model chosen, and its test score measured, with LightGBM and DistilBERT for reference. Test scores for the Kaggle models and `docs/MODELLING.md` remain |
-| 5 | Thin end to end version: saved model behind a FastAPI service, one basic page, a container | Not started |
+| 5 | First end to end version: saved model behind a FastAPI service, a React page, a container. The page lists demo transactions with filters, shows a chosen transaction's score and the past transfers behind it, and has a model card (metrics and known blind spots) | In progress. Model packaged and checked against the evaluation; FastAPI service under way |
 | 6 | Continuous deployment: GitHub Actions builds and deploys the container. First live link | Not started |
 | 7 | Multi-agent system: LangGraph graph, tools, two agents, loop, human interrupt | Not started |
 | 8 | Agent evaluation harness and labelled case set, with a subset in CI, `docs/AGENT_EVAL.md` | Not started |
@@ -349,7 +349,7 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 | Scope creep | High | High | Non-goals in section 7; cuts go to Phase 2 |
 | Local machine cannot run the full stack | Medium | Medium | Keep the cluster small; run Bedrock instead of a local model for demos; heavy training on Kaggle |
 | Multi-agent design looks contrived | Medium | Medium | Only two LLM agents, each justified in section 4 |
-| Infrastructure consumes the schedule | Medium | High | A thin end to end version is deployed first and grown in place, so infrastructure work is spread out and always has a working result |
+| Infrastructure consumes the schedule | Medium | High | A first end to end version, without agents, is deployed first and grown in place, so infrastructure work is spread out and always has a working result |
 
 ## 15. Items to confirm
 
@@ -358,7 +358,6 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 3. The host for the public demo, to be chosen at step 5 after checking current free tiers.
 4. The daily cap on live agent runs in the public demo.
 5. Whether SageMaker Serverless Inference should be switched on for the demo recording, to show SageMaker serving as well as training.
-6. Whether the React dashboard should stay minimal, as assumed here.
 
 ## 16. Possible commercial path
 

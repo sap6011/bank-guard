@@ -336,11 +336,13 @@ name = "bank-guard"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "scikit-learn" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -352,6 +354,7 @@ deep = [
     { name = "transformers" },
 ]
 dev = [
+    { name = "httpx" },
     { name = "ipykernel" },
     { name = "jupyterlab" },
     { name = "mlflow" },
@@ -361,11 +364,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.163.1" },
     { name = "lightgbm", specifier = "==4.7.0" },
     { name = "matplotlib", specifier = "==3.10.6" },
     { name = "numpy", specifier = "==2.3.5" },
     { name = "pandas", specifier = "==2.3.3" },
     { name = "scikit-learn", specifier = "==1.7.2" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -377,6 +382,7 @@ deep = [
     { name = "transformers", specifier = ">=5.23.0" },
 ]
 dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "jupyterlab", specifier = ">=4.6.6" },
     { name = "mlflow", specifier = ">=3.18.0" },
