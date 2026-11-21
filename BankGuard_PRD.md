@@ -140,7 +140,7 @@ About 30% of the effort. This is the main evidence for data scientist and ML eng
 
 **Results that drive design decisions:**
 1. **Hub sent laundering is not detectable on current inputs.** It is about 13% of laundering in validation, and every model tried misses it, including the sequence model that reads each account's recent history: for a hub, the last 64 transactions cover only minutes. This caps recall at about 87%, sets the hub sender risk in section 14, and leaves an open question for the agent design in section 4.
-2. **Licence and serving shape the choice of served model.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score, so it is a research benchmark only. The sequence model, the strongest so far on validation, has its own weights and is small enough for a CPU, but serving it needs each account's recent history at scoring time, which LightGBM's trailing counts also need in a simpler form. The served model is decided at model selection **[confirm]**.
+2. **Licence and serving shape the choice of served model.** TabPFN-3.5 is under a non-commercial licence (fine-tuned or distilled versions count as derivatives) and needs a GPU to score, so it is a research benchmark only. The sequence transformer, chosen on validation, has its own weights and is small enough for a CPU, so it is the served model (decided 21 Nov 2026). Serving it needs each account's recent transactions at scoring time, which LightGBM's trailing counts also need in a simpler form; the demo bundles a sample of transactions with enough history for the accounts it shows. A score is explained by the past transactions that raise it most, found by removing each in turn and scoring again, since a transformer has no built-in feature importance.
 3. **Simulator specific signals are strong** (payment format, the pair count, bank country). They are ablated, and the commercial path in section 16 depends on knowing which parts of the method would transfer.
 4. **The test days contain a shift.** 9 Sep has about 36% more transactions than any validation day, from about 70% more distinct senders, and every model's precision collapses on it, while 10 Sep scores as on validation. Drift of this kind is what the drift check in step 9 must detect, so it monitors the number of active accounts and the score distribution, not only feature averages.
 
@@ -250,7 +250,7 @@ Nothing runs on AWS when the project is idle.
 | Part | Choice |
 |---|---|
 | Front end | Static React build on free static hosting |
-| API and model | One container with FastAPI and the served model (likely the saved LightGBM model, since it runs on a CPU), on a free or scale to zero host |
+| API and model | One Docker container with FastAPI and the sequence transformer (three seeds, CPU-only torch), on a free or scale to zero host. The same image runs on local Kubernetes (kind) and, on demand, on EKS |
 | Data | A small sample of transactions and accounts bundled with the service |
 | Replay mode (default) | Visitors step through investigations recorded once. Scores and the dashboard are live, agent reasoning is played back. Cost per visit is zero |
 | Live mode (limited) | Fresh agent runs against Bedrock, with a small daily cap so cost has a hard ceiling |
@@ -355,11 +355,10 @@ Not in scope now. Listed so the Phase 1 boundaries read as deliberate.
 
 1. The remaining time budget, now that the modelling track has run longer than planned.
 2. Whether the targeted hub sender experiment is still planned, and where it lives.
-3. The served model for the live demo, decided at model selection (LightGBM assumed).
-4. The host for the public demo, to be chosen at step 5 after checking current free tiers.
-5. The daily cap on live agent runs in the public demo.
-6. Whether SageMaker Serverless Inference should be switched on for the demo recording, to show SageMaker serving as well as training.
-7. Whether the React dashboard should stay minimal, as assumed here.
+3. The host for the public demo, to be chosen at step 5 after checking current free tiers.
+4. The daily cap on live agent runs in the public demo.
+5. Whether SageMaker Serverless Inference should be switched on for the demo recording, to show SageMaker serving as well as training.
+6. Whether the React dashboard should stay minimal, as assumed here.
 
 ## 16. Possible commercial path
 
