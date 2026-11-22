@@ -78,14 +78,22 @@ def encode_rows(X: pd.DataFrame, prep: dict) -> np.ndarray:
     return (rows.to_numpy(np.float32) - mean) / std
 
 
-def history_inputs(events: Events, tx_values, start, end, minute, counterparty, prep: dict):
-    """One side's histories, with the two amount fields standardised and padding left at zero."""
-    length = prep["history_length"]
-    values, mask = gather(events, tx_values, start, end, minute, counterparty, length)
+def standardise_history(values, mask, prep: dict) -> np.ndarray:
+    """Saved or gathered histories with the two amount fields scaled as in training.
+
+    Padding stays at zero. Returns a new array; the input is not changed.
+    """
+    values = values.copy()
     mean = np.array(prep["amount_mean"], np.float32)
     std = np.array(prep["amount_std"], np.float32)
     values[..., :2] = (values[..., :2] - mean) / std * mask[..., None]
-    return values, mask
+    return values
+
+
+def history_inputs(events: Events, tx_values, start, end, minute, counterparty, prep: dict):
+    """One side's histories from the event table, standardised for the model."""
+    values, mask = gather(events, tx_values, start, end, minute, counterparty, prep["history_length"])
+    return standardise_history(values, mask, prep), mask
 
 
 def load_models(directory, prep: dict, device="cpu") -> list[SequenceModel]:
@@ -100,12 +108,24 @@ def load_models(directory, prep: dict, device="cpu") -> list[SequenceModel]:
 
 
 @torch.no_grad()
+def predict(models, row_x, sender_values, sender_mask, receiver_values, receiver_mask,
+            device="cpu", batch_size=2048) -> np.ndarray:
+    """Laundering score for prepared inputs, averaged over the seed models."""
+    arrays = (row_x, sender_values, sender_mask, receiver_values, receiver_mask)
+    out = []
+    for i in range(0, len(row_x), batch_size):
+        inputs = [torch.from_numpy(a[i:i + batch_size]).to(device) for a in arrays]
+        probs = torch.stack([torch.sigmoid(m(*inputs)) for m in models])
+        out.append(probs.mean(dim=0).cpu().numpy())
+    return np.concatenate(out)
+
+
 def score_rows(models, prep: dict, events: Events, tx_values, row_x, sender, receiver, minute,
                device="cpu", batch_size=2048) -> np.ndarray:
-    """Laundering probability for each row, averaged over the seed models.
+    """Laundering score for each row, histories built from the event table.
 
-    row_x holds the rows' encoded features; sender, receiver and minute identify each
-    row's accounts and time, so its histories can be looked up in `events`.
+    The scores rank transfers well but are not probabilities: training kept
+    every laundering row and only a sample of normal ones.
     """
     sender, receiver, minute = (np.asarray(a) for a in (sender, receiver, minute))
     length = prep["history_length"]
@@ -114,11 +134,7 @@ def score_rows(models, prep: dict, events: Events, tx_values, row_x, sender, rec
     out = []
     for i in range(0, len(row_x), batch_size):
         b = slice(i, i + batch_size)
-        sides = [
-            *history_inputs(events, tx_values, s0[b], s1[b], minute[b], receiver[b], prep),
-            *history_inputs(events, tx_values, r0[b], r1[b], minute[b], sender[b], prep),
-        ]
-        inputs = [torch.from_numpy(a).to(device) for a in (row_x[b], *sides)]
-        probs = torch.stack([torch.sigmoid(m(*inputs)) for m in models])
-        out.append(probs.mean(dim=0).cpu().numpy())
+        sv, sm = history_inputs(events, tx_values, s0[b], s1[b], minute[b], receiver[b], prep)
+        rv, rm = history_inputs(events, tx_values, r0[b], r1[b], minute[b], sender[b], prep)
+        out.append(predict(models, row_x[b], sv, sm, rv, rm, device, batch_size))
     return np.concatenate(out)
