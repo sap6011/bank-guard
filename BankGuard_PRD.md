@@ -252,6 +252,7 @@ Nothing runs on AWS when the project is idle.
 | Front end | Static React build on free static hosting |
 | API and model | One Docker container with FastAPI and the sequence transformer (three seeds, CPU-only torch), on a free or scale to zero host. The same image runs on local Kubernetes (kind) and, on demand, on EKS |
 | Data | A small sample of transactions and accounts bundled with the service |
+| Interaction | Visitors pick real test transfers, which carry true labels, or edit one in the what-if mode. Free-form transactions typed from scratch are not offered, because the model's signal is in account history and a made-up transfer has none and no true label. A scenario builder (laundering patterns such as a fan-out built from new accounts) is added only if a feasibility test first shows the model reacts sensibly to hand-built patterns; if not, that result goes in the model card (decided 22 Nov 2026) |
 | Replay mode (default) | Visitors step through investigations recorded once. Scores and the dashboard are live, agent reasoning is played back. Cost per visit is zero |
 | Live mode (limited) | Fresh agent runs against Bedrock, with a small daily cap so cost has a hard ceiling |
 | Delivery | GitHub Actions runs tests, builds the image, and deploys on each push to main |
@@ -299,11 +300,11 @@ Revised on 16 Nov 2026, status updated 21 Nov 2026. A first end to end version (
 | 2 | Packaging: notebook code moved into `src/bankguard/`, with tests and MLflow tracking | Done. Data, features, evaluate, model, train and text modules, pytest suite, ruff, MLflow. Installable from GitHub, which the Kaggle notebooks use |
 | 3 | Continuous integration: GitHub Actions runs the tests on every push | Done. Lint (ruff) then pytest on every push to main and on pull requests |
 | 4 | Alternative models in their own notebooks, model selection, one final test set score, `docs/MODELLING.md` | In progress. DistilBERT, ModernBERT (2 and 4 epochs), TabPFN-3.5-Fast and the sequence model (main run) done. Qwen3-0.6B LoRA and the sequence model's time shift check done; TabPFN-2 moved to stretch goals. Combination test done (it scored below the sequence model), the sequence model chosen, and its test score measured, with LightGBM and DistilBERT for reference. Test scores for the Kaggle models and `docs/MODELLING.md` remain |
-| 5 | First end to end version: saved model behind a FastAPI service, a React page, a container. The page lists demo transactions with filters, shows a chosen transaction's score and the past transfers behind it, and has a model card (metrics and known blind spots) | In progress. Model packaged and checked against the evaluation; FastAPI service under way |
+| 5 | First end to end version: saved model behind a FastAPI service, a React page, a container. The page lists demo transactions with filters, shows a chosen transaction's score and the past transfers behind it, has a what-if mode (change a real transfer's amount or time, or remove past transfers from its history, and score it again), and has a model card (metrics and known blind spots) | In progress. Model packaged and checked against the evaluation; FastAPI service under way |
 | 6 | Continuous deployment: GitHub Actions builds and deploys the container. First live link | Not started |
 | 7 | Multi-agent system: LangGraph graph, tools, two agents, loop, human interrupt | Not started |
 | 8 | Agent evaluation harness and labelled case set, with a subset in CI, `docs/AGENT_EVAL.md` | Not started |
-| 9 | Polish: replay mode, dashboard, drift check, README, demo video, v3 architecture diagram, AWS resources torn down | Not started |
+| 9 | Polish: replay mode, dashboard, scenario builder if its feasibility test passes, drift check, README, demo video, v3 architecture diagram, AWS resources torn down | Not started |
 
 Modelling came first on purpose. It is the part reviewers for these roles weigh most, and the agents need a real model to call.
 
