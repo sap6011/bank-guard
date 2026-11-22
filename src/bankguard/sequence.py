@@ -76,3 +76,22 @@ def gather(events: Events, tx_values, start, end, minute, counterparty, length: 
     ], axis=-1).astype(np.float32)
     values[~mask] = 0
     return values, mask
+
+def remove_events(values, mask, slots):
+    """One history with the events in `slots` removed, as if they never happened.
+
+    Older events move up to fill the gaps and padding grows at the front.
+    values: (length, n_fields); mask: (length,). Returns the new values and
+    mask, and for each new slot the old slot it came from (-1 for padding).
+    A full history would in reality pull in older events from beyond its
+    length; those are not available here, so the history just gets shorter.
+    """
+    length = len(mask)
+    keep = mask.copy()
+    keep[np.asarray(slots, dtype=int)] = False
+    old = np.flatnonzero(keep)
+    source = np.full(length, -1)
+    source[length - len(old):] = old
+    new_values = np.zeros_like(values)
+    new_values[length - len(old):] = values[old]
+    return new_values, source >= 0, source

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from bankguard.features import CATEGORICAL
+from bankguard.sequence import remove_events
 from bankguard.sequence_model import (
     encode_rows,
     load_models,
@@ -64,3 +65,69 @@ class DemoScorer:
     def alerts(self, scores) -> np.ndarray:
         """Whether each score crosses each alert threshold; columns follow `alert_fpr`."""
         return np.asarray(scores)[:, None] >= self.data["alert_threshold"][None, :]
+
+    def currency(self, i: int) -> str:
+        """Payment currency of demo transfer i."""
+        d = self.data
+        return str(d["currency_names"][d["detail_currency"][d["tx"][i]]])
+
+    def explain(self, i: int):
+        """How much each past transfer raises demo transfer i's score.
+
+        Removes each past transfer in turn, leaving everything else as it is,
+        and scores again. Returns the base score and a table with one row per
+        past transfer: side, slot, its row in the details table, and
+        effect = base score minus the score without it. Largest effect first.
+        """
+        base = self.score(i)[0]
+        variants = [
+            (side, int(slot))
+            for side in SIDES
+            for slot in np.flatnonzero(self.data[f"{side}_mask"][i])
+        ]
+        columns = ["side", "slot", "detail", "effect"]
+        if not variants:
+            return base, pd.DataFrame(columns=columns)
+
+        n = len(variants)
+        row = np.repeat(self.row_x[i:i + 1], n, axis=0)
+        values = {s: np.repeat(self.history[s][i:i + 1], n, axis=0) for s in SIDES}
+        masks = {s: np.repeat(self.data[f"{s}_mask"][i:i + 1], n, axis=0) for s in SIDES}
+        for k, (side, slot) in enumerate(variants):
+            values[side][k], masks[side][k], _ = remove_events(values[side][k], masks[side][k], [slot])
+        scores = predict(self.models, row, values["sender"], masks["sender"],
+                         values["receiver"], masks["receiver"], self.device)
+
+        table = pd.DataFrame({
+            "side": [side for side, _ in variants],
+            "slot": [slot for _, slot in variants],
+            "detail": [int(self.data[f"{side}_tx"][i, slot]) for side, slot in variants],
+            "effect": base - scores,
+        })
+        return base, table.sort_values("effect", ascending=False, ignore_index=True)
+
+    def what_if(self, i: int, amount: float | None = None, removed=()) -> float:
+        """Score demo transfer i with a different amount and/or past transfers removed.
+
+        amount is in the transfer's own payment currency; removed holds
+        (side, slot) pairs. Changing the amount changes only the two amount
+        features: a transfer is never part of its own history or counts.
+        """
+        features = self.features.iloc[[i]].copy()
+        if amount is not None:
+            if amount <= 0:
+                raise ValueError("amount must be positive")
+            log_amount = np.log10(max(amount, 0.01))
+            median = self.prep["currency_median"][self.currency(i)]
+            features["log_amount"] = log_amount
+            features["amount_vs_currency"] = log_amount - np.log10(median)
+        row = encode_rows(features, self.prep)
+
+        if any(side not in SIDES for side, _ in removed):
+            raise ValueError(f"side must be one of {SIDES}")
+        inputs = []
+        for side in SIDES:
+            slots = [slot for s, slot in removed if s == side]
+            v, m, _ = remove_events(self.history[side][i], self.data[f"{side}_mask"][i], slots)
+            inputs += [v[None], m[None]]
+        return float(predict(self.models, row, *inputs, self.device)[0])

@@ -47,3 +47,27 @@ def test_stricter_alert_flags_a_subset(scorer, scores):
     alerts = scorer.alerts(scores)
     assert alerts.shape == (len(scores), len(scorer.data["alert_fpr"]))
     assert (alerts[:, 1] <= alerts[:, 0]).all()
+
+@pytest.fixture(scope="module")
+def busiest(scorer):
+    """The demo transfer with the most past transfers on both sides."""
+    d = scorer.data
+    return int(np.argmax(d["sender_mask"].sum(1) + d["receiver_mask"].sum(1)))
+
+
+def test_unchanged_what_if_matches_score(scorer, scores, busiest):
+    i = busiest
+    amount = float(scorer.data["detail_amount"][scorer.data["tx"][i]])
+    assert abs(scorer.what_if(i) - scores[i]) < 1e-5
+    assert abs(scorer.what_if(i, amount=amount) - scores[i]) < 1e-5
+
+
+def test_explanation_matches_removal(scorer, scores, busiest):
+    i = busiest
+    base, table = scorer.explain(i)
+    d = scorer.data
+    assert len(table) == d["sender_mask"][i].sum() + d["receiver_mask"][i].sum()
+    assert abs(base - scores[i]) < 1e-5
+    top = table.iloc[0]
+    without = scorer.what_if(i, removed=[(top.side, top.slot)])
+    assert abs(base - top.effect - without) < 1e-5

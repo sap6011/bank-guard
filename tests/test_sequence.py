@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from bankguard.features import BIG
-from bankguard.sequence import build_events, gather, history_bounds
+from bankguard.sequence import build_events, gather, history_bounds, remove_events
 
 # (sender, receiver, minute, self_transfer); accounts 0, 1 and 2
 TXS = [
@@ -69,3 +69,15 @@ def test_no_later_event_ever_enters_a_history():
         assert (keys % BIG < minutes[i]).all()
         earlier = (events.keys // BIG == sender[i]) & (events.keys % BIG < minutes[i])
         assert end[i] - start[i] == min(length, earlier.sum())
+
+def test_remove_events_shifts_older_events_up():
+    values = np.arange(5, dtype=np.float32)[:, None].repeat(2, axis=1)
+    values[0] = 0
+    mask = np.array([False, True, True, True, True])
+    new_values, new_mask, source = remove_events(values, mask, [2])
+    assert source.tolist() == [-1, -1, 1, 3, 4]
+    assert new_mask.tolist() == [False, False, True, True, True]
+    assert new_values[:, 0].tolist() == [0, 0, 1, 3, 4]
+    # Removing nothing changes nothing.
+    same_values, same_mask, _ = remove_events(values, mask, [])
+    assert (same_values == values).all() and (same_mask == mask).all()
