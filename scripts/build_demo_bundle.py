@@ -41,6 +41,7 @@ OUT = ROOT / "models" / "demo" / "bundle.npz"
 N_TOP_NORMAL = 300  # the normal transfers the model scores highest (false alarms)
 N_RANDOM_NORMAL = 3_000  # normal transfers drawn at random
 SEED = 0
+ALERT_FPRS = [0.01, 0.001]  # alert budgets: share of normal transfers that get flagged
 NUMERIC = [f for f in FEATURES if f not in CATEGORICAL]
 
 
@@ -81,9 +82,18 @@ def main():
     X = build_features(tx, accounts, prep["currency_median"])
 
     # The demo transfers, chosen with the evaluated test scores.
-    test_pos = split_by_date(tx)["test"].index.to_numpy()
+    splits = split_by_date(tx)
+    test_pos = splits["test"].index.to_numpy()
     scores = np.load(MODELS / "sequence_test_scores_avg.npy")
     assert len(scores) == len(test_pos)
+
+    # Alert thresholds and the reference for percentiles come from validation,
+    # so nothing shown about a demo score is set on the test days.
+    val_pos = splits["validation"].index.to_numpy()
+    val_scores = np.load(MODELS / "sequence_val_scores_avg.npy")
+    assert len(val_scores) == len(val_pos)
+    val_normal = val_scores[tx["is_laundering"].to_numpy()[val_pos] == 0]
+
     y_test = tx["is_laundering"].to_numpy()[test_pos]
     local, sample = choose_rows(y_test, scores, np.random.default_rng(SEED))
     pos = test_pos[local]
@@ -130,6 +140,10 @@ def main():
         "typology": np.asarray(typology, dtype=str),
         "group": np.where(y == 1, group, "normal"),
         "evaluated_score": scores[local].astype(np.float32),
+        # Turning a raw score into an alert decision and a percentile, set on validation.
+        "alert_fpr": np.array(ALERT_FPRS),
+        "alert_threshold": np.quantile(val_normal, 1 - np.array(ALERT_FPRS)).astype(np.float32),
+        "reference_quantiles": np.quantile(val_scores, np.linspace(0, 1, 10_001)).astype(np.float32),
         "features": X.iloc[pos][NUMERIC].to_numpy(np.float32),
         "feature_names": np.array(NUMERIC),
         **{c: X.iloc[pos][c].astype(str).to_numpy(dtype=str) for c in CATEGORICAL},
@@ -160,6 +174,10 @@ def main():
     print(f"transfers in the details table: {len(used):,}")
     print(f"accounts: {len(account_names):,}")
     print(f"bundle: {OUT.stat().st_size / 1e6:.1f} MB at {OUT}")
+    for fpr, threshold in zip(ALERT_FPRS, bundle["alert_threshold"]):
+        caught = (bundle["evaluated_score"][y == 1] >= threshold).mean()
+        print(f"alert budget {fpr:.1%}: threshold {threshold:.4f}, "
+              f"flags {caught:.1%} of test laundering")
 
 
 if __name__ == "__main__":
