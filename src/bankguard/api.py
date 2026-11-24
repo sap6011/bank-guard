@@ -161,8 +161,8 @@ def build_model_card(scorer: DemoScorer) -> ModelCard:
             "and a sample of normal ones, so laundering was about 1 in 80 training rows against about "
             "1 in 900 in reality. Read the percentile and the alerts instead."),
             (f"Laundering sent by hub accounts (at least 1,000 payments in the previous 3 days) is not "
-            f"detected: at most {hub_recall:.0%} test recall. For a hub, its last {length} transfers "
-            f"cover only minutes."),
+            f"detected: {hub_recall:.0%} test recall even at the {loose['budget']:.0%} alert budget. "
+            f"For a hub, its last {length} transfers cover only minutes."),
             (f"Alert thresholds are set on validation. On the test days the {loose['budget']:.0%} budget "
             f"flagged {loose['test_false_alarm_rate']:.1%} of normal transfers, because 9 Sep brought "
             f"many more occasionally active accounts. A deployment needs drift monitoring."),
