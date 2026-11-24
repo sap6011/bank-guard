@@ -17,3 +17,98 @@ body {
 .error {
   color: #b00020;
 }
+
+.muted {
+  color: #6b6b6b;
+  font-size: 0.9rem;
+}
+
+.mono {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e2e2dc;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.filters select {
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.transactions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.transactions th,
+.transactions td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.transactions .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.transactions tbody tr {
+  cursor: pointer;
+}
+
+.transactions tbody tr:hover {
+  background: #f3f6fb;
+}
+
+.transactions tbody tr.selected {
+  background: #e3ecfa;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.tag.laundering {
+  background: #fde8e8;
+  color: #9b1c1c;
+}
+
+.tag.normal {
+  background: #e8f5ec;
+  color: #1e6b3a;
+}
+
+.tag.alert {
+  background: #fff2d6;
+  color: #8a5a00;
+}
+
+.pager {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
