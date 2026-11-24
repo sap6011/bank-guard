@@ -52,3 +52,13 @@ def test_bad_requests_are_rejected(client):
     assert client.get("/transactions/999999").status_code == 404
     assert client.get("/transactions", params={"group": "nope"}).status_code == 422
     assert client.post("/transactions/0/what-if", json={"amount": -5}).status_code == 422
+
+
+def test_model_card_matches_bundle(client):
+    card = client.get("/model-card").json()
+    groups = card["test_recall_by_group"]
+    assert {g["group"] for g in groups} == {"patterned", "quiet", "hub"}
+    assert sum(g["laundering"] for g in groups) == card["test_laundering"]
+    thresholds = [a["threshold"] for a in card["alert_thresholds"]]
+    assert np.allclose(thresholds, client.app.state.scorer.data["alert_threshold"])
+    assert len(card["limitations"]) >= 4

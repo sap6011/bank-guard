@@ -6,6 +6,7 @@ what-if scoring. Paths come from BANKGUARD_MODEL_DIR and BANKGUARD_BUNDLE,
 defaulting to the repo's models folder.
 """
 
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -104,6 +105,76 @@ class WhatIfResponse(BaseModel):
     alerts: list[Alert]
 
 
+class Recall(BaseModel):
+    fpr: float = Field(description="Share of normal transfers flagged")
+    recall: float = Field(description="Share of laundering caught at that rate")
+
+
+class Metrics(BaseModel):
+    pr_auc: float
+    recall: list[Recall]
+
+
+class GroupRecall(BaseModel):
+    group: Group
+    laundering: int
+    recall: list[Recall]
+
+
+class AlertCheck(BaseModel):
+    budget: float = Field(description="Share of normal transfers the threshold was set to flag, on validation")
+    threshold: float
+    test_recall: float
+    test_false_alarm_rate: float = Field(description="Share of test normal transfers it actually flagged")
+
+
+class ModelCard(BaseModel):
+    model: str
+    data: str
+    training: str
+    validation: Metrics
+    test: Metrics
+    test_transfers: int
+    test_laundering: int
+    test_recall_by_group: list[GroupRecall]
+    alert_thresholds: list[AlertCheck]
+    limitations: list[str]
+
+
+def build_model_card(scorer: DemoScorer) -> ModelCard:
+    """The model card: computed results from the bundle plus the limitations they imply."""
+    card = json.loads(str(scorer.data["model_card"]))
+    for g in card["test_recall_by_group"]:
+        g["group"] = GROUPS[g["group"]]
+    hub = next(g for g in card["test_recall_by_group"] if g["group"] == "hub")
+    hub_recall = max(r["recall"] for r in hub["recall"])
+    loose = max(card["alert_thresholds"], key=lambda a: a["budget"])
+    seeds = ", ".join(str(s) for s in scorer.prep["seeds"])
+    length = scorer.prep["history_length"]
+    return ModelCard(
+        model=f"Sequence transformer, average of {len(scorer.prep['seeds'])} seeds ({seeds})",
+        data="IBM Transactions for Anti Money Laundering, HI-Small (synthetic)",
+        training="Trained on 1 to 6 Sep 2022, chosen on validation (7 to 8 Sep), tested once on 9 to 10 Sep",
+        **card,
+        limitations=[
+            ("Scores rank transfers but are not probabilities: training kept every laundering transfer "
+            "and a sample of normal ones, so laundering was about 1 in 80 training rows against about "
+            "1 in 900 in reality. Read the percentile and the alerts instead."),
+            (f"Laundering sent by hub accounts (at least 1,000 payments in the previous 3 days) is not "
+            f"detected: at most {hub_recall:.0%} test recall. For a hub, its last {length} transfers "
+            f"cover only minutes."),
+            (f"Alert thresholds are set on validation. On the test days the {loose['budget']:.0%} budget "
+            f"flagged {loose['test_false_alarm_rate']:.1%} of normal transfers, because 9 Sep brought "
+            f"many more occasionally active accounts. A deployment needs drift monitoring."),
+            ("Payment format, currency and bank country are left out on purpose: in this simulator "
+            "they act as shortcuts that would not hold at a real bank."),
+            (f"Explanations remove one past transfer at a time; a full {length}-event history does not "
+            f"pull in an older transfer to replace it."),
+            "The data is synthetic, so results do not transfer directly to real banks.",
+        ],
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the models and the demo bundle once, before the first request."""
@@ -118,6 +189,7 @@ async def lifespan(app: FastAPI):
         "percentile": scorer.percentile(scores),
         "alert": scorer.alerts(scores)[:, 0],
     }
+    app.state.card = build_model_card(scorer)
     yield
 
 
@@ -150,6 +222,10 @@ def health() -> dict[str, str]:
     """Liveness check used by the host and by Kubernetes."""
     return {"status": "ok"}
 
+@app.get("/model-card")
+def model_card(request: Request) -> ModelCard:
+    """What the served model is, how well it did, and where it fails."""
+    return request.app.state.card
 
 @app.get("/transactions")
 def list_transactions(
