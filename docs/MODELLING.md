@@ -144,20 +144,22 @@ On 10 September every model scores about as on validation; the drop is confined 
 
 This is a shift in the data at the end of the simulation, not a failure to generalise to later days, and the sequence transformer, which reads each account's actual history instead of trailing counts, degrades least: on 9 September it keeps 3.7 times LightGBM's PR-AUC. It is also the kind of drift a deployed model must be watched for, so the planned drift check monitors the number of active accounts and the distribution of scores, not only feature averages.
 
+**Thresholds set on validation.** The test metrics above set each alert threshold on the test days themselves, which a bank cannot do. Set on validation instead, as in the live demo, the sequence transformer's 1% threshold flags 3.7% of test normal transfers, 4.1% on 9 September (26,951 false alarms against about 6,540 planned) and 2.5% on 10 September, and its 0.1% threshold flags 0.19% (0.16% and 0.31%). Recall rises to 85.8% and 56.1%, but only because of the extra alerts. On both test days normal transfers score higher than on validation, so an alert team sized on past data would face up to four times its planned workload, with no sign of it from the model itself.
+
 ## Limitations and next steps
 
 **Limitations**
 - **Synthetic data.** All results come from a simulator. Several strong signals (payment format, the pair count, bank country) appear to be properties of the simulator rather than of laundering; the strongest are kept out of the models and the rest are reported, but part of the measured performance would not transfer to a real bank.
 - **Hub sent laundering is not detected.** About 12% of laundering is invisible to every model, which caps recall at about 87%.
-- **Shift on the test days.** One test day carries a wave of extra accounts that sharply lowers precision for every model, and the headline test score includes it.
+- **Shift on the test days.** One test day carries a wave of extra accounts that sharply lowers precision for every model, and the headline test score includes it. Alert thresholds set on validation flag up to four times their planned share of normal transfers on the test days.
 - **Stability.** The sequence transformer varies more between seeds than LightGBM (validation PR-AUC 0.434 to 0.482); the text models and TabPFN were run once each.
 - **Not yet done.** The PRD plans calibration, a cost based decision threshold and a comparison with the results reported in the dataset paper; these are not covered here.
 
 **Next steps**
 - **Graph structure for hub senders.** A graph neural network over the transaction network, planned for Phase 2, is the natural next model for the group no current input separates.
 - **Training data.** Use the first days of data as history only, and train the sequence transformer on more normal rows; LightGBM gains clearly from its full 3.25 million rows.
-- **Serving.** The sequence transformer is small enough for a CPU, but it needs each account's recent transactions at scoring time, which the serving design must provide.
-- **Monitoring.** Track the number of active accounts and the score distribution, so that a shift like 9 September is caught as it happens.
+- **Serving.** The live demo serves the sequence transformer on a CPU from a bundle of saved histories; a real deployment would need a store of each account's recent transactions at scoring time.
+- **Monitoring.** Track the number of active accounts, the score distribution and the daily alert volume, so that a shift like the one on the test days is caught as it happens.
 - **Stretch goals.** TabPFN-2, the version licensed for commercial use, and test scores for the remaining models.
 
 ## How to reproduce
