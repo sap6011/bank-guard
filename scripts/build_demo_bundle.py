@@ -24,7 +24,7 @@ from bankguard.data import (
     split_by_date,
     typology_for,
 )
-from bankguard.evaluate import laundering_group
+from bankguard.evaluate import evaluate, laundering_group, recall_by_group
 from bankguard.features import (
     CATEGORICAL,
     FEATURES,
@@ -42,6 +42,7 @@ N_TOP_NORMAL = 300  # the normal transfers the model scores highest (false alarm
 N_RANDOM_NORMAL = 3_000  # normal transfers drawn at random
 SEED = 0
 ALERT_FPRS = [0.01, 0.001]  # alert budgets: share of normal transfers that get flagged
+FPRS = (0.001, 0.01)  # false positive rates for the headline recall, as in the evaluation
 NUMERIC = [f for f in FEATURES if f not in CATEGORICAL]
 
 
@@ -72,6 +73,42 @@ def history_tx(events, start, end, length):
     idx = np.where(mask, start[:, None] + steps[None, :] - pad[:, None], 0)
     return np.where(mask, events.tx[idx], -1)
 
+def metrics(y, scores) -> dict:
+    """PR-AUC and recall at the headline false positive rates."""
+    m = evaluate(y, scores, "", fprs=FPRS)
+    return {
+        "pr_auc": m["pr_auc"],
+        "recall": [{"fpr": f, "recall": m[f"recall_at_{f:.1%}_fpr"]} for f in FPRS],
+    }
+
+
+def model_card(val_y, val_scores, test_y, test_scores, test_group, thresholds) -> dict:
+    """Headline results of the served model, from its saved evaluation scores."""
+    table = recall_by_group(test_y, test_scores, test_group, fprs=FPRS)
+    return {
+        "validation": metrics(val_y, val_scores),
+        "test": metrics(test_y, test_scores),
+        "test_transfers": len(test_y),
+        "test_laundering": int(test_y.sum()),
+        "test_recall_by_group": [
+            {
+                "group": g,
+                "laundering": int(row["laundering"]),
+                "recall": [{"fpr": f, "recall": float(row[f"recall_at_{f:.1%}_fpr"])} for f in FPRS],
+            }
+            for g, row in table.iterrows()
+        ],
+        "alert_thresholds": [
+            {
+                "budget": fpr,
+                "threshold": float(t),
+                "test_recall": float((test_scores[test_y == 1] >= t).mean()),
+                "test_false_alarm_rate": float((test_scores[test_y == 0] >= t).mean()),
+            }
+            for fpr, t in zip(ALERT_FPRS, thresholds)
+        ],
+    }
+
 
 def main():
     prep = json.loads((MODELS / "preprocessing.json").read_text())
@@ -92,7 +129,8 @@ def main():
     val_pos = splits["validation"].index.to_numpy()
     val_scores = np.load(MODELS / "sequence_val_scores_avg.npy")
     assert len(val_scores) == len(val_pos)
-    val_normal = val_scores[tx["is_laundering"].to_numpy()[val_pos] == 0]
+    val_y = tx["is_laundering"].to_numpy()[val_pos]
+    thresholds = np.quantile(val_scores[val_y == 0], 1 - np.array(ALERT_FPRS)).astype(np.float32)
 
     y_test = tx["is_laundering"].to_numpy()[test_pos]
     local, sample = choose_rows(y_test, scores, np.random.default_rng(SEED))
@@ -128,9 +166,12 @@ def main():
     currency_codes, currency_names = pd.factorize(d["payment_currency"].astype(str))
     format_codes, format_names = pd.factorize(d["payment_format"].astype(str))
 
-    typology = typology_for(tx.iloc[pos], load_patterns(DATA / "HI-Small_Patterns.txt"))
-    group = laundering_group(typology, X["sender_out_3d"].to_numpy()[pos])
+    # Typology and laundering group of every test transfer, for the demo set and the model card.
+    test_typology = typology_for(tx.iloc[test_pos], load_patterns(DATA / "HI-Small_Patterns.txt"))
+    test_group = laundering_group(test_typology, X["sender_out_3d"].to_numpy()[test_pos])
+    typology, group = test_typology[local], test_group[local]
     y = y_test[local]
+    card = model_card(val_y, val_scores, y_test, scores, test_group, thresholds)
 
     bundle = {
         # One entry per demo transfer, in time order.
@@ -142,7 +183,8 @@ def main():
         "evaluated_score": scores[local].astype(np.float32),
         # Turning a raw score into an alert decision and a percentile, set on validation.
         "alert_fpr": np.array(ALERT_FPRS),
-        "alert_threshold": np.quantile(val_normal, 1 - np.array(ALERT_FPRS)).astype(np.float32),
+        "alert_threshold": thresholds,
+        "model_card": np.array(json.dumps(card)),
         "reference_quantiles": np.quantile(val_scores, np.linspace(0, 1, 10_001)).astype(np.float32),
         "features": X.iloc[pos][NUMERIC].to_numpy(np.float32),
         "feature_names": np.array(NUMERIC),
@@ -174,10 +216,7 @@ def main():
     print(f"transfers in the details table: {len(used):,}")
     print(f"accounts: {len(account_names):,}")
     print(f"bundle: {OUT.stat().st_size / 1e6:.1f} MB at {OUT}")
-    for fpr, threshold in zip(ALERT_FPRS, bundle["alert_threshold"]):
-        caught = (bundle["evaluated_score"][y == 1] >= threshold).mean()
-        print(f"alert budget {fpr:.1%}: threshold {threshold:.4f}, "
-              f"flags {caught:.1%} of test laundering")
+    print("model card:", json.dumps(card, indent=2))
 
 
 if __name__ == "__main__":
