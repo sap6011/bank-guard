@@ -60,7 +60,7 @@ class DemoScorer:
         """Percentage of validation transfers scoring at or below each score."""
         q = self.data["reference_quantiles"]
         below = np.searchsorted(q, np.asarray(scores), side="right") - 1
-        return np.clip(below / (len(q) - 1) * 100, 0, 100)
+        return np.round(np.clip(below / (len(q) - 1) * 100, 0, 100), 2)
 
     def alerts(self, scores) -> np.ndarray:
         """Whether each score crosses each alert threshold; columns follow `alert_fpr`."""
@@ -70,6 +70,24 @@ class DemoScorer:
         """Payment currency of demo transfer i."""
         d = self.data
         return str(d["currency_names"][d["detail_currency"][d["tx"][i]]])
+
+    def transfers(self, rows) -> list[dict]:
+        """Readable details of rows in the details table."""
+        d = self.data
+        rows = np.asarray(rows, dtype=int)
+        origin = pd.Timestamp(str(d["time_origin"]))
+        times = origin + pd.to_timedelta(d["detail_minute"][rows], unit="min")
+        return [
+            {
+                "time": t.strftime("%Y-%m-%d %H:%M"),
+                "from_account": str(d["account_names"][d["detail_from"][r]]),
+                "to_account": str(d["account_names"][d["detail_to"][r]]),
+                "amount": float(d["detail_amount"][r]),
+                "currency": str(d["currency_names"][d["detail_currency"][r]]),
+                "payment_format": str(d["format_names"][d["detail_format"][r]]),
+            }
+            for t, r in zip(times, rows)
+        ]
 
     def explain(self, i: int):
         """How much each past transfer raises demo transfer i's score.
