@@ -185,3 +185,36 @@ body {
 .down {
   color: #1e6b3a;
 }
+
+button {
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.whatif {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.whatif label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.whatif input {
+  padding: 4px 8px;
+  font: inherit;
+  width: 160px;
+}
+
+.comparison {
+  max-width: 420px;
+  margin-top: 8px;
+}

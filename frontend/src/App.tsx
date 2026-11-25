@@ -34,7 +34,7 @@ export default function App() {
             <p className="muted">Pick a transfer to see its score and the past transfers behind it.</p>
           </section>
         ) : (
-          <TransactionDetail id={selectedId} />
+          <TransactionDetail key={selectedId} id={selectedId} />
         )}
       </div>
     </main>
