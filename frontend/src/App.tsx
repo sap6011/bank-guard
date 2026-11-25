@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getModelCard, type ModelCard } from './api'
 import TransactionList from './components/TransactionList'
+import TransactionDetail from './components/TransactionDetail'
 
 export default function App() {
   const [card, setCard] = useState<ModelCard | null>(null)
@@ -26,8 +27,16 @@ export default function App() {
         )}
       </header>
       {error && <p className="error">Could not reach the API: {error}</p>}
-      <TransactionList selectedId={selectedId} onSelect={setSelectedId} />
-      {selectedId !== null && <p>Selected transfer #{selectedId}. Its details come in the next step.</p>}
+      <div className="layout">
+        <TransactionList selectedId={selectedId} onSelect={setSelectedId} />
+        {selectedId === null ? (
+          <section className="panel detail">
+            <p className="muted">Pick a transfer to see its score and the past transfers behind it.</p>
+          </section>
+        ) : (
+          <TransactionDetail id={selectedId} />
+        )}
+      </div>
     </main>
   )
 }

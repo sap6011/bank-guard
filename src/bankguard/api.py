@@ -188,6 +188,7 @@ async def lifespan(app: FastAPI):
         "score": scores,
         "percentile": scorer.percentile(scores),
         "alert": scorer.alerts(scores)[:, 0],
+        "minute": d["detail_minute"][d["tx"]],
     }
     app.state.card = build_model_card(scorer)
     yield
@@ -246,9 +247,11 @@ def list_transactions(
         keep &= t["sample"] == sample
     if alert is not None:
         keep &= t["alert"] == alert
-    ids = np.flatnonzero(keep)  # already in time order
+    ids = np.flatnonzero(keep)
     if sort == "score":
         ids = ids[np.argsort(-t["score"][ids], kind="stable")]
+    else:
+        ids = ids[np.argsort(t["minute"][ids], kind="stable")]
     page = ids[offset:offset + limit]
     transfers = scorer.transfers(scorer.data["tx"][page])
     items = [

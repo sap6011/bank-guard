@@ -62,3 +62,8 @@ def test_model_card_matches_bundle(client):
     thresholds = [a["threshold"] for a in card["alert_thresholds"]]
     assert np.allclose(thresholds, client.app.state.scorer.data["alert_threshold"])
     assert len(card["limitations"]) >= 4
+
+def test_time_sort_is_chronological(client):
+    items = client.get("/transactions", params={"sort": "time", "limit": 200}).json()["items"]
+    times = [item["transfer"]["time"] for item in items]
+    assert times == sorted(times)

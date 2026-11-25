@@ -21,3 +21,11 @@ export function formatAmount(amount: number, currency: string): string {
 export function formatPercentile(percentile: number): string {
   return `${percentile.toFixed(2)}%`
 }
+
+export function formatEffect(effect: number): string {
+  return `${effect >= 0 ? '+' : ''}${effect.toFixed(4)}`
+}
+
+export function formatBudget(budget: number): string {
+  return `${(budget * 100).toLocaleString('en-US')}%`
+}

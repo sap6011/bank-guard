@@ -9,7 +9,7 @@ body {
 }
 
 .page {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -111,4 +111,77 @@ body {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1200px) {
+  .layout {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .detail {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+.detail h2 {
+  margin-top: 0;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 12px 0;
+}
+
+.facts > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.label {
+  font-size: 0.75rem;
+  color: #6b6b6b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag.quiet {
+  background: #eee;
+  color: #555;
+}
+
+.reasons {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.reasons th,
+.reasons td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid #eee;
+}
+
+.reasons .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.up {
+  color: #9b1c1c;
+}
+
+.down {
+  color: #1e6b3a;
 }
