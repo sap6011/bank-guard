@@ -13,6 +13,7 @@ import {
   formatBudget,
   formatEffect,
   formatPercentile,
+  formatTime,
   GROUP_LABELS,
   SAMPLE_LABELS,
 } from '../format'
@@ -208,39 +209,41 @@ interface ReasonTableProps {
 function ReasonTable({ rows, empty, removed, onToggle }: ReasonTableProps) {
   if (rows.length === 0) return <p className="muted">{empty}</p>
   return (
-    <table className="reasons">
-      <thead>
-        <tr>
-          <th>Remove</th>
-          <th>History</th>
-          <th>Time</th>
-          <th>From</th>
-          <th>To</th>
-          <th className="num">Amount</th>
-          <th className="num">Effect</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((p) => (
-          <tr key={keyOf(p)}>
-            <td>
-              <input
-                type="checkbox"
-                checked={removed.has(keyOf(p))}
-                onChange={() => onToggle(keyOf(p))}
-                aria-label="Remove this past transfer in the what-if"
-              />
-            </td>
-            <td>{p.side === 'sender' ? "Sender's" : "Receiver's"}</td>
-            <td>{p.transfer.time}</td>
-            <td className="mono">{p.transfer.from_account}</td>
-            <td className="mono">{p.transfer.to_account}</td>
-            <td className="num">{formatAmount(p.transfer.amount, p.transfer.currency)}</td>
-            <td className={`num ${p.effect > 0 ? 'up' : 'down'}`}>{formatEffect(p.effect)}</td>
+    <div className="table-wrap">
+      <table className="reasons">
+        <thead>
+          <tr>
+            <th>Remove</th>
+            <th>History</th>
+            <th>Time</th>
+            <th>From</th>
+            <th>To</th>
+            <th className="num">Amount</th>
+            <th className="num">Effect</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((p) => (
+            <tr key={keyOf(p)}>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={removed.has(keyOf(p))}
+                  onChange={() => onToggle(keyOf(p))}
+                  aria-label="Remove this past transfer in the what-if"
+                />
+              </td>
+              <td>{p.side === 'sender' ? 'Sender' : 'Receiver'}</td>
+              <td>{formatTime(p.transfer.time)}</td>
+              <td className="mono">{p.transfer.from_account}</td>
+              <td className="mono">{p.transfer.to_account}</td>
+              <td className="num">{formatAmount(p.transfer.amount, p.transfer.currency)}</td>
+              <td className={`num ${p.effect > 0 ? 'up' : 'down'}`}>{formatEffect(p.effect)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

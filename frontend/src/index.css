@@ -218,3 +218,13 @@ button {
   max-width: 420px;
   margin-top: 8px;
 }
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.transactions td,
+.reasons td {
+  white-space: nowrap;
+  vertical-align: middle;
+}

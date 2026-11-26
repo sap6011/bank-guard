@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listTransactions, type Group, type Sample, type TransactionPage } from '../api'
-import { formatAmount, formatPercentile, GROUP_LABELS, SAMPLE_LABELS } from '../format'
+import { formatAmount, formatPercentile, formatTime, GROUP_LABELS, GROUP_SHORT, SAMPLE_LABELS } from '../format'
 
 const PAGE_SIZE = 25
 
@@ -125,46 +125,48 @@ export default function TransactionList({ selectedId, onSelect }: Props) {
             {total.toLocaleString()} transfers
             {total > 0 && `, showing ${offset + 1} to ${Math.min(offset + PAGE_SIZE, total)}`}
           </p>
-          <table className="transactions">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>From</th>
-                <th>To</th>
-                <th className="num">Amount</th>
-                <th>Actual</th>
-                <th className="num">Rank</th>
-                <th>Alert</th>
-              </tr>
-            </thead>
-            <tbody>
-              {page.items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={item.id === selectedId ? 'selected' : undefined}
-                  onClick={() => onSelect(item.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onSelect(item.id)
-                  }}
-                  tabIndex={0}
-                >
-                  <td>{item.transfer.time}</td>
-                  <td className="mono">{item.transfer.from_account}</td>
-                  <td className="mono">{item.transfer.to_account}</td>
-                  <td className="num">{formatAmount(item.transfer.amount, item.transfer.currency)}</td>
-                  <td>
-                    {item.is_laundering ? (
-                      <span className="tag laundering">{GROUP_LABELS[item.group]}</span>
-                    ) : (
-                      <span className="tag normal">Normal</span>
-                    )}
-                  </td>
-                  <td className="num">{formatPercentile(item.percentile)}</td>
-                  <td>{item.alert ? <span className="tag alert">Alert</span> : <span className="muted">No</span>}</td>
+          <div className="table-wrap">
+            <table className="transactions">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th className="num">Amount</th>
+                  <th>Actual</th>
+                  <th className="num">Rank</th>
+                  <th>Alert</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {page.items.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={item.id === selectedId ? 'selected' : undefined}
+                    onClick={() => onSelect(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') onSelect(item.id)
+                    }}
+                    tabIndex={0}
+                  >
+                  <td>{formatTime(item.transfer.time)}</td>
+                    <td className="mono">{item.transfer.from_account}</td>
+                    <td className="mono">{item.transfer.to_account}</td>
+                    <td className="num">{formatAmount(item.transfer.amount, item.transfer.currency)}</td>
+                    <td>
+                      {item.is_laundering ? (
+                        <span className="tag laundering">{GROUP_SHORT[item.group]}</span>
+                      ) : (
+                        <span className="tag normal">Normal</span>
+                      )}
+                    </td>
+                    <td className="num">{formatPercentile(item.percentile)}</td>
+                    <td>{item.alert ? <span className="tag alert">Alert</span> : <span className="muted">No</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="pager">
             <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
               Previous
