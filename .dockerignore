@@ -1,0 +1,11 @@
+# Only these files are sent to the Docker build. data/ (about 0.5 GB), models/
+# (about 1.9 GB), the notebooks and the front end stay out; the front end is
+# deployed separately as static files.
+*
+!pyproject.toml
+!uv.lock
+!src/
+!models/sequence/preprocessing.json
+!models/sequence/sequence_seed*.pt
+!models/demo/bundle.npz
+**/__pycache__
