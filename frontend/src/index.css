@@ -9,7 +9,7 @@ body {
 }
 
 .page {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -121,7 +121,7 @@ body {
 
 @media (min-width: 1200px) {
   .layout {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .detail {
@@ -261,3 +261,4 @@ button {
 .reasons th {
   white-space: nowrap;
 }
+
