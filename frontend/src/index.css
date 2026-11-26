@@ -228,3 +228,36 @@ button {
   white-space: nowrap;
   vertical-align: middle;
 }
+
+.model-card summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.model-card[open] summary {
+  margin-bottom: 8px;
+}
+
+.card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 1000px) {
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.limitations {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.limitations li {
+  margin-bottom: 6px;
+}
+
+.reasons th {
+  white-space: nowrap;
+}

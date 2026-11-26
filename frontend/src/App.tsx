@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getModelCard, type ModelCard } from './api'
 import TransactionList from './components/TransactionList'
 import TransactionDetail from './components/TransactionDetail'
+import ModelCardPanel from './components/ModelCardPanel'
 
 export default function App() {
   const [card, setCard] = useState<ModelCard | null>(null)
@@ -26,6 +27,7 @@ export default function App() {
           </p>
         )}
       </header>
+      {card && <ModelCardPanel card={card} />}
       {error && <p className="error">Could not reach the API: {error}</p>}
       <div className="layout">
         <TransactionList selectedId={selectedId} onSelect={setSelectedId} />

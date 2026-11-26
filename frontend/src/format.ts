@@ -65,3 +65,8 @@ export function formatEffect(effect: number): string {
 export function formatBudget(budget: number): string {
   return `${(budget * 100).toLocaleString('en-US')}%`
 }
+
+export function formatRate(rate: number): string {
+  const digits = rate > 0 && rate < 0.01 ? 2 : 1 // keep small rates such as 0.19% distinguishable
+  return `${(rate * 100).toFixed(digits)}%`
+}
